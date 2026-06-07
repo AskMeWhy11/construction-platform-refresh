@@ -1,0 +1,11 @@
+{% extends "admin/change_list.html" %}
+{% load admin_urls %}
+
+{% block object-tools-items %}
+    <li>
+        <a href="{% url 'admin:calc_costrate_pivot' %}" class="addlink" style="background:#1abc9c;">
+            📊 Открыть таблицу-pivot
+        </a>
+    </li>
+    {{ block.super }}
+{% endblock %}

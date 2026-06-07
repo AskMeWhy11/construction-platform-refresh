@@ -1,0 +1,122 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Себестоимость — таблица{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'calc/cost_pivot.css' %}">
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Главная</a>
+    › <a href="{% url 'admin:app_list' app_label='calc' %}">Калькулятор экспертизы</a>
+    › <a href="{% url 'admin:calc_costrate_changelist' %}">Себестоимость</a>
+    › Таблица
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="cp-wrap"
+     data-save-url="{{ save_url }}"
+     data-add-city-url="{{ add_city_url }}"
+     data-page-url="{{ page_url }}"
+     data-import-preview-url="{% url 'admin:calc_costrate_pivot_import_preview' %}"
+     data-import-apply-url="{% url 'admin:calc_costrate_pivot_import_apply' %}">
+
+    <div class="cp-toolbar">
+        <div class="cp-left">
+            <div class="cp-search">
+                <span class="cp-search-icon">🔍</span>
+                <input type="text" id="cp-search" placeholder="Поиск по городу...">
+            </div>
+            <button type="button" class="cp-btn cp-btn-outline" id="cp-add-city">
+                <span>+</span> Добавить город
+            </button>
+            <button type="button" class="cp-btn cp-btn-outline" id="cp-import">
+                ⬆ Импорт Excel
+            </button>
+            <input type="file" id="cp-file" accept=".xlsx" hidden>
+        </div>
+
+        <div class="cp-right">
+            <button type="button" class="cp-btn cp-btn-outline" id="cp-reload">↻ Обновить</button>
+            <button type="button" class="cp-btn cp-btn-primary" id="cp-save" disabled>💾 Сохранить</button>
+        </div>
+    </div>
+
+    <div class="cp-table-wrap">
+        <table class="cp-table">
+            <thead>
+                <tr>
+                    <th class="cp-th-city">Город</th>
+                    {% for cls in classes %}
+                        <th>{{ cls.name }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody id="cp-tbody">
+                {% for row in rows %}
+                    <tr data-city-id="{{ row.city_id }}" data-city-name="{{ row.city_name|lower }}">
+                        <td class="cp-td-city">{{ row.city_name }}</td>
+                        {% for cell in row.cells %}
+                            <td>
+                                <input type="text"
+                                       class="cp-cell"
+                                       data-city-id="{{ row.city_id }}"
+                                       data-class-id="{{ cell.class_id }}"
+                                       data-original="{% if cell.value %}{{ cell.value }}{% else %}0.00{% endif %}"
+                                       value="{% if cell.value %}{{ cell.value }}{% else %}0.00{% endif %}">
+                            </td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="cp-footer">
+        Городов: <b id="cp-cities-count">{{ cities_count }}</b>
+        &nbsp;|&nbsp;
+        Классов: <b>{{ classes_count }}</b>
+        <span id="cp-status" class="cp-status"></span>
+    </div>
+</div>
+
+<!-- Модалка импорта -->
+<div class="cp-modal-backdrop cp-hidden" id="cp-import-modal">
+    <div class="cp-modal">
+        <div class="cp-modal-head">
+            <h2>Импорт Excel — превью</h2>
+            <button type="button" class="cp-modal-close" id="cp-import-close">×</button>
+        </div>
+        <div class="cp-modal-body" id="cp-import-body">
+            <div id="cp-import-loader" class="cp-loader">Чтение файла...</div>
+            <div id="cp-import-content" class="cp-hidden">
+                <div class="cp-import-summary" id="cp-import-summary"></div>
+
+                <div class="cp-import-warnings" id="cp-import-warnings"></div>
+
+                <div class="cp-import-options">
+                    <label><input type="checkbox" id="cp-opt-create-cities" checked> Создавать отсутствующие города</label>
+                    <label><input type="checkbox" id="cp-opt-overwrite"> Перезаписывать существующие тарифы</label>
+                    <label><input type="checkbox" id="cp-opt-clear-zeros"> Удалять тарифы, где в файле пусто/0</label>
+                </div>
+
+                <div class="cp-import-preview-wrap">
+                    <table class="cp-table cp-preview-table" id="cp-preview-table"></table>
+                </div>
+            </div>
+            <div id="cp-import-error" class="cp-error-box cp-hidden"></div>
+        </div>
+        <div class="cp-modal-foot">
+            <button type="button" class="cp-btn cp-btn-outline" id="cp-import-cancel">Отмена</button>
+            <button type="button" class="cp-btn cp-btn-primary" id="cp-import-apply" disabled>Применить</button>
+        </div>
+    </div>
+</div>
+
+{% csrf_token %}
+<script src="{% static 'calc/cost_pivot.js' %}"></script>
+{% endblock %}
