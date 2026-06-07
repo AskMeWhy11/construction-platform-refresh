@@ -1,0 +1,277 @@
+{% extends "calc/base.html" %}
+
+{% block title %}Калькулятор — СтройКалькулятор{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <p class="hero-eyebrow">Калькулятор</p>
+    <h1 class="hero-title">Расчёт стоимости строительства</h1>
+    <p class="hero-sub">
+        Параметрический расчёт на базе нормативных стоимостей,
+        классов строительства и поправочных коэффициентов.
+    </p>
+</section>
+
+<div class="split">
+    {# ── Левая карточка: форма ─────────────────────────────────────── #}
+    <form method="post" class="card" novalidate>
+        {% csrf_token %}
+        <h2 class="card-title">Параметры проекта</h2>
+
+        {% if error %}
+        <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+
+        <div class="field">
+            <label class="label" for="{{ form.city.id_for_label }}">{{ form.city.label }}</label>
+            {{ form.city }}
+            {{ form.city.errors }}
+        </div>
+
+        <div class="field">
+            <label class="label" for="{{ form.purpose.id_for_label }}">{{ form.purpose.label }}</label>
+            {{ form.purpose }}
+            {{ form.purpose.errors }}
+        </div>
+
+        <div class="field">
+            <label class="label" for="{{ form.building_class.id_for_label }}">{{ form.building_class.label }}</label>
+            <div data-classes-field data-url-template="{% url 'calc:classes_for_purpose' 0 %}">
+                {{ form.building_class }}
+            </div>
+            {{ form.building_class.errors }}
+        </div>
+
+        <div class="field-row">
+            <div class="field">
+                <label class="label" for="{{ form.floors.id_for_label }}">{{ form.floors.label }}</label>
+                {{ form.floors }}
+                {{ form.floors.errors }}
+            </div>
+            <div class="field">
+                <label class="label" for="{{ form.total_area.id_for_label }}">{{ form.total_area.label }}</label>
+                {{ form.total_area }}
+                {{ form.total_area.errors }}
+            </div>
+        </div>
+
+        <div class="field">
+            <label class="checkbox-row">
+                {{ form.underground_parking }}
+                <span>{{ form.underground_parking.label }}</span>
+            </label>
+            {{ form.underground_parking.errors }}
+        </div>
+
+        <div class="field">
+            <label class="checkbox-row">
+                {{ form.ground_parking }}
+                <span>{{ form.ground_parking.label }}</span>
+            </label>
+            {{ form.ground_parking.errors }}
+        </div>
+
+        <div class="field {% if not form.ground_parking.value %}hidden{% endif %}" data-depends-on="ground_parking">
+            <label class="label" for="{{ form.ground_parking_spaces.id_for_label }}">
+                {{ form.ground_parking_spaces.label }}
+            </label>
+            {{ form.ground_parking_spaces }}
+            {{ form.ground_parking_spaces.errors }}
+        </div>
+
+        <button type="submit" class="btn btn-primary">Рассчитать проект</button>
+    </form>
+
+    {# ── Правая карточка: результаты ──────────────────────────────── #}
+    <div class="card">
+        <h2 class="card-title">Результат расчёта</h2>
+
+        {% if result %}
+        {# Hero — итоговая стоимость строительства #}
+        <div class="result-hero">
+            <p class="result-hero-label">Стоимость строительства</p>
+            <p class="result-hero-value">
+                {{ result.construction_cost|floatformat:0 }}<span class="suffix">₽</span>
+            </p>
+            <div class="result-hero-meta">
+                <div>
+                    Цена за м²
+                    <b>{{ result.price_per_sqm|floatformat:0 }} ₽</b>
+                </div>
+                <div>
+                    Площадь
+                    <b>{{ result.total_area|floatformat:2 }} м²</b>
+                </div>
+                {% if result.duration_months %}
+                <div>
+                    Срок строительства
+                    <b>{{ result.duration_months }} мес.</b>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {# Базовые показатели #}
+        <div class="result-section">
+            <h3 class="result-section-title">Структура стоимости</h3>
+            <div class="result-grid result-grid-3">
+                <div class="result-item">
+                    <div class="result-item-label">Базовая стоимость</div>
+                    <div class="result-item-value">
+                        {{ result.base_cost|floatformat:0 }}<span class="suffix">₽</span>
+                    </div>
+                </div>
+                <div class="result-item">
+                    <div class="result-item-label">Инфляция</div>
+                    <div class="result-item-value">
+                        {{ result.inflation_amount|floatformat:0 }}<span class="suffix">₽</span>
+                    </div>
+                </div>
+                <div class="result-item">
+                    <div class="result-item-label">Площадь квартир</div>
+                    <div class="result-item-value">
+                        {{ result.apartments_area|floatformat:0 }}<span class="suffix">м²</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Коэффициенты #}
+        <div class="result-section">
+            <h3 class="result-section-title">Коэффициенты</h3>
+            <div class="result-grid">
+                <div class="result-item">
+                    <div class="result-item-label">Очистка от инфляции</div>
+                    <div class="result-item-value">{{ result.clean_coef|floatformat:3 }}</div>
+                </div>
+                <div class="result-item">
+                    <div class="result-item-label">Ставка инфляции</div>
+                    <div class="result-item-value">{{ result.inflation_rate|floatformat:4 }}</div>
+                </div>
+            </div>
+        </div>
+
+        {# Соцобъекты #}
+        {% if result.doo_seats or result.sosh_seats %}
+        <div class="result-section">
+            <h3 class="result-section-title">Социальная инфраструктура</h3>
+            <div class="result-grid">
+                {% if result.doo_seats %}
+                <div class="result-item">
+                    <div class="result-item-label">ДОО — мест</div>
+                    <div class="result-item-value">
+                        {{ result.doo_seats }}
+                        <span class="suffix">{{ result.doo_cost|floatformat:0 }} ₽</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if result.sosh_seats %}
+                <div class="result-item">
+                    <div class="result-item-label">СОШ — мест</div>
+                    <div class="result-item-value">
+                        {{ result.sosh_seats }}
+                        <span class="suffix">{{ result.sosh_cost|floatformat:0 }} ₽</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# Паркинг #}
+        {% if result.underground_parking or result.ground_parking_spaces %}
+        <div class="result-section">
+            <h3 class="result-section-title">Паркинг</h3>
+            <div class="result-grid">
+                {% if result.underground_parking %}
+                <div class="result-item">
+                    <div class="result-item-label">Подземный</div>
+                    <div class="result-item-value">да</div>
+                </div>
+                {% endif %}
+                {% if result.ground_parking_spaces %}
+                <div class="result-item">
+                    <div class="result-item-label">Наземный · {{ result.ground_parking_spaces }} м/м</div>
+                    <div class="result-item-value">
+                        {{ result.ground_parking_cost|floatformat:0 }}<span class="suffix">₽</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="result-empty">
+            <div class="result-empty-icon">∑</div>
+            <p class="result-empty-title">Здесь появится расчёт</p>
+            <p class="result-empty-sub">
+                Заполните параметры слева и нажмите «Рассчитать проект».
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    const purposeEl = document.querySelector('[name="purpose"]');
+    const wrapper = document.querySelector('[data-classes-field]');
+    if (!purposeEl || !wrapper) return;
+
+    const classEl = wrapper.querySelector('select[name="building_class"]');
+    const urlTemplate = wrapper.dataset.urlTemplate;  // .../api/classes/0/
+
+    function tsOf(el) { return el.tomselect || null; }
+
+    async function loadClasses(purposeId, preserve) {
+        const ts = tsOf(classEl);
+        if (!purposeId) {
+            if (ts) {
+                ts.clear();
+                ts.clearOptions();
+            } else {
+                classEl.innerHTML = '<option value="">———</option>';
+            }
+            return;
+        }
+        const url = urlTemplate.replace(/\/0\/?$/, '/' + purposeId + '/');
+        const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        const current = preserve ? (ts ? ts.getValue() : classEl.value) : '';
+
+        if (ts) {
+            ts.clear(true);
+            ts.clearOptions();
+            ts.addOption(data.classes.map(c => ({ value: String(c.id), text: c.name })));
+            ts.refreshOptions(false);
+            if (current && data.classes.some(c => String(c.id) === String(current))) {
+                ts.setValue(current, true);
+            }
+        } else {
+            classEl.innerHTML = '<option value="">———</option>';
+            for (const c of data.classes) {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                if (String(c.id) === String(current)) opt.selected = true;
+                classEl.appendChild(opt);
+            }
+        }
+    }
+
+    // Слушаем как нативное change, так и Tom Select-овское
+    purposeEl.addEventListener('change', () => loadClasses(purposeEl.value, false));
+
+    // Догрузка при восстановлении формы
+    const initialPurpose = purposeEl.value;
+    if (initialPurpose && classEl.options.length <= 1) {
+        loadClasses(initialPurpose, true);
+    }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,10 @@
+services:
+  web:
+    build: .
+    container_name: calcsite-web
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8000"   # наружу только через localhost → системный nginx
+    volumes:
+      - ./data:/app/data        # персистентность sqlite между пересборками

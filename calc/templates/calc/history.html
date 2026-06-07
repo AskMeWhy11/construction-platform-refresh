@@ -1,0 +1,22 @@
+{% extends "calc/base.html" %}
+
+{% block title %}История — СтройКалькулятор{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <p class="hero-eyebrow">Архив</p>
+    <h1 class="hero-title">История расчётов</h1>
+    <p class="hero-sub">
+        Журнал ранее выполненных расчётов с возможностью вернуться к параметрам и результатам.
+    </p>
+</section>
+
+<div class="placeholder">
+    <div class="placeholder-icon">⌛</div>
+    <p class="placeholder-title">История пока недоступна</p>
+    <p class="placeholder-sub">
+        Сохранение расчётов появится в одной из следующих версий.<br>
+        Сейчас расчёт выполняется без сохранения.
+    </p>
+</div>
+{% endblock %}
