@@ -2,6 +2,10 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal
 from math import ceil
 
+DEFAULT_SQM_PER_RESIDENT = Decimal("30.00")
+DEFAULT_DOO_PER_1000 = Decimal("65.00")
+DEFAULT_SOSH_PER_1000 = Decimal("135.00")
+
 from .models import (
     BuildingClass,
     BuildingPurpose,
@@ -29,6 +33,7 @@ class CalcResult:
     clean_coef: Decimal
     total_area: Decimal
     apartments_area: Decimal
+    residents: int
     underground_parking: bool
     ground_parking_spaces: int
     ground_parking_cost: Decimal
@@ -95,16 +100,40 @@ def calculate(*, city: City, purpose: BuildingPurpose, building_class: BuildingC
     apartments_area = (total_area * purpose.apartments_area_ratio).quantize(Decimal("0.01"))
 
     # 4. Социалка
+    # 4.1. Число жителей (норма — переопределение города → дефолт настроек → константа)
+    sqm_per_resident = (
+        city.sqm_per_resident
+        or (settings.default_sqm_per_resident if settings else None)
+        or DEFAULT_SQM_PER_RESIDENT
+    )
+    if sqm_per_resident and sqm_per_resident > 0:
+        residents = ceil(apartments_area / sqm_per_resident)
+    else:
+        residents = 0
+
+    # 4.2. Нормативы мест на 1000 жителей (город → дефолт настроек → константа)
+    doo_per_1000 = (
+        city.doo_per_1000
+        or (settings.default_doo_per_1000 if settings else None)
+        or DEFAULT_DOO_PER_1000
+    )
+    sosh_per_1000 = (
+        city.sosh_per_1000
+        or (settings.default_sosh_per_1000 if settings else None)
+        or DEFAULT_SOSH_PER_1000
+    )
+
+    # 4.3. Места и стоимость (стоимость места — из активного норматива)
     norms = SocialNorms.objects.filter(is_active=True).first()
+    doo_seats = ceil(Decimal(residents) * Decimal("0.001") * doo_per_1000)
+    sosh_seats = ceil(Decimal(residents) * Decimal("0.001") * sosh_per_1000)
     if norms:
-        doo_seats = ceil(total_area / norms.sqm_per_doo_seat)
         doo_cost = (Decimal(doo_seats) * norms.cost_per_doo_seat).quantize(Decimal("0.01"))
-        sosh_seats = ceil(total_area / norms.sqm_per_school_seat)
         sosh_cost = (Decimal(sosh_seats) * norms.cost_per_school_seat).quantize(Decimal("0.01"))
     else:
-        doo_seats = sosh_seats = 0
         doo_cost = sosh_cost = Decimal("0.00")
-
+    
+    
     # 5. Паркинг
     parking_rate = ParkingRate.objects.filter(city=city).first()
     cost_per_space = parking_rate.cost_per_space if parking_rate else Decimal("0")
@@ -120,6 +149,7 @@ def calculate(*, city: City, purpose: BuildingPurpose, building_class: BuildingC
         "construction_cost": construction_cost,
         "total_area": total_area,
         "apartments_area": apartments_area,
+        "residents": residents,
         "doo_seats": doo_seats,
         "doo_cost": doo_cost,
         "sosh_seats": sosh_seats,
