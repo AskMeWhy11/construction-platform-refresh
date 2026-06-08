@@ -5,6 +5,22 @@ from django.db import models
 class City(models.Model):
     name = models.CharField("Город", max_length=100, unique=True)
 
+    sqm_per_resident = models.DecimalField(
+        "Норма площади на жителя, м²", max_digits=6, decimal_places=2,
+        null=True, blank=True,
+        help_text="Переопределение для города. Пусто → значение по умолчанию из настроек.",
+    )
+    doo_per_1000 = models.DecimalField(
+        "Норматив ДОО на 1000 жителей", max_digits=7, decimal_places=2,
+        null=True, blank=True,
+        help_text="Переопределение для города. Пусто → значение по умолчанию из настроек.",
+    )
+    sosh_per_1000 = models.DecimalField(
+        "Норматив СОШ на 1000 жителей", max_digits=7, decimal_places=2,
+        null=True, blank=True,
+        help_text="Переопределение для города. Пусто → значение по умолчанию из настроек.",
+    )
+
     class Meta:
         verbose_name = "Город"
         verbose_name_plural = "Города"
@@ -130,6 +146,18 @@ class ParkingRate(models.Model):
 class Settings(models.Model):
     inflation_clean_coef = models.DecimalField(
         "Коэф. очистки от инфляции", max_digits=4, decimal_places=3, default=Decimal("0.900"),
+    )
+    default_sqm_per_resident = models.DecimalField(
+        "Норма площади на жителя, м² (по умолчанию)",
+        max_digits=6, decimal_places=2, default=Decimal("30.00"),
+    )
+    default_doo_per_1000 = models.DecimalField(
+        "Норматив ДОО на 1000 жителей (по умолчанию)",
+        max_digits=7, decimal_places=2, default=Decimal("65.00"),
+    )
+    default_sosh_per_1000 = models.DecimalField(
+        "Норматив СОШ на 1000 жителей (по умолчанию)",
+        max_digits=7, decimal_places=2, default=Decimal("135.00"),
     )
     is_active = models.BooleanField("Активна", default=False)
 
