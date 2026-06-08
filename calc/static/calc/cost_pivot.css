@@ -54,7 +54,7 @@
 .cp-btn:hover { border-color: var(--teal); color: var(--teal); }
 .cp-btn-outline { color: var(--text); }
 .cp-btn-primary {
-    background: var(--teal); color: #fff; border-color: var(--teal); font-weight: 500;
+    background: var(--teal); color: var(--text); border-color: var(--teal); font-weight: 500;
 }
 .cp-btn-primary:hover { background: var(--teal-dark); border-color: var(--teal-dark); color: #fff; }
 .cp-btn-primary:disabled { background: #b8e6dc; border-color: #b8e6dc; cursor: not-allowed; color: #fff; }

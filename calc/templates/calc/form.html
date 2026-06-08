@@ -1,4 +1,5 @@
 {% extends "calc/base.html" %}
+{% load calc_format %}
 
 {% block title %}Калькулятор — СтройКалькулятор{% endblock %}
 
@@ -91,16 +92,16 @@
         <div class="result-hero">
             <p class="result-hero-label">Стоимость строительства</p>
             <p class="result-hero-value">
-                {{ result.construction_cost|floatformat:0 }}<span class="suffix">₽</span>
+                {{ result.construction_cost|spaces }}<span class="suffix">₽</span>
             </p>
             <div class="result-hero-meta">
                 <div>
                     Цена за м²
-                    <b>{{ result.price_per_sqm|floatformat:0 }} ₽</b>
+                    <b>{{ result.price_per_sqm|spaces }} ₽</b>
                 </div>
                 <div>
                     Площадь
-                    <b>{{ result.total_area|floatformat:2 }} м²</b>
+                    <b>{{ result.total_area|spaces:2 }} м²</b>
                 </div>
                 {% if result.duration_months %}
                 <div>
@@ -118,19 +119,19 @@
                 <div class="result-item">
                     <div class="result-item-label">Базовая стоимость</div>
                     <div class="result-item-value">
-                        {{ result.base_cost|floatformat:0 }}<span class="suffix">₽</span>
+                        {{ result.base_cost|spaces }}<span class="suffix">₽</span>
                     </div>
                 </div>
                 <div class="result-item">
                     <div class="result-item-label">Инфляция</div>
                     <div class="result-item-value">
-                        {{ result.inflation_amount|floatformat:0 }}<span class="suffix">₽</span>
+                        {{ result.inflation_amount|spaces }}<span class="suffix">₽</span>
                     </div>
                 </div>
                 <div class="result-item">
                     <div class="result-item-label">Площадь квартир</div>
                     <div class="result-item-value">
-                        {{ result.apartments_area|floatformat:0 }}<span class="suffix">м²</span>
+                        {{ result.apartments_area|spaces }}<span class="suffix">м²</span>
                     </div>
                 </div>
             </div>
@@ -161,7 +162,7 @@
                     <div class="result-item-label">ДОО — мест</div>
                     <div class="result-item-value">
                         {{ result.doo_seats }}
-                        <span class="suffix">{{ result.doo_cost|floatformat:0 }} ₽</span>
+                        <span class="suffix">{{ result.doo_cost|spaces }} ₽</span>
                     </div>
                 </div>
                 {% endif %}
@@ -170,7 +171,7 @@
                     <div class="result-item-label">СОШ — мест</div>
                     <div class="result-item-value">
                         {{ result.sosh_seats }}
-                        <span class="suffix">{{ result.sosh_cost|floatformat:0 }} ₽</span>
+                        <span class="suffix">{{ result.sosh_cost|spaces }} ₽</span>
                     </div>
                 </div>
                 {% endif %}
@@ -193,7 +194,7 @@
                 <div class="result-item">
                     <div class="result-item-label">Наземный · {{ result.ground_parking_spaces }} м/м</div>
                     <div class="result-item-value">
-                        {{ result.ground_parking_cost|floatformat:0 }}<span class="suffix">₽</span>
+                        {{ result.ground_parking_cost|spaces }}<span class="suffix">₽</span>
                     </div>
                 </div>
                 {% endif %}
