@@ -87,8 +87,8 @@ def calculate(*, city: City, purpose: BuildingPurpose, building_class: BuildingC
     inflation = Inflation.objects.filter(is_active=True).first()
     inflation_rate = inflation.rate if inflation else Decimal("0")
 
-    base_cost = (total_area * price_per_sqm * clean_coef).quantize(Decimal("0.01"))
-    inflation_amount = (base_cost * inflation_rate).quantize(Decimal("0.01"))
+    base_cost = (total_area * price_per_sqm).quantize(Decimal("0.01"))
+    inflation_amount = (base_cost * clean_coef * inflation_rate).quantize(Decimal("0.01"))
     construction_cost = (base_cost + inflation_amount).quantize(Decimal("0.01"))
 
     # 3. Площадь квартир
