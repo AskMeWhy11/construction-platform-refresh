@@ -38,7 +38,7 @@ def spaces(value, decimals=0):
         groups.insert(0, int_part[-3:])
         int_part = int_part[:-3]
     groups.insert(0, int_part)
-    int_fmt = "\u202f".join(groups)  # narrow no-break space
+    int_fmt = ("\u202f" * 3).join(groups)
 
     result = f"{sign}{int_fmt}"
     if decimals:
