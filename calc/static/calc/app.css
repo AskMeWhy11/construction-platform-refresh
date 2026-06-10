@@ -726,6 +726,27 @@ body.theme-dark .select {
     font-weight: 500;
 }
 
+.accordion-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+}
+.accordion-summary::-webkit-details-marker { display: none; }
+.accordion-summary::after {
+    content: "▾";
+    transition: transform .2s ease;
+    font-size: .85em;
+    opacity: .6;
+}
+.accordion[open] .accordion-summary::after { transform: rotate(180deg); }
+.accordion-meta {
+    font-weight: 600;
+    opacity: .7;
+    margin-left: auto;
+}
 
 /* ==========================================================================
    Утилиты
