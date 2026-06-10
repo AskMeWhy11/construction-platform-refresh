@@ -221,11 +221,29 @@ class CostItem(models.Model):
     def counts_in_total(self) -> bool:
         """В ИТОГО входят только обычные статьи и подстатьи (не агрегат-сумма)."""
         return self.item_type in (self.TYPE_ARTICLE, self.TYPE_SUBARTICLE)
+
+class MonthlyInflation(models.Model):
+    """Помесячная таблица инфляции для расчёта инфляционного удорожания."""
+    month = models.PositiveSmallIntegerField("Месяц", unique=True)
+    rate = models.DecimalField(
+        "Инфляция", max_digits=6, decimal_places=4,
+        help_text="Доля, например 0.0806 = 8.06%",
+    )
+
+    class Meta:
+        verbose_name = "Помесячная инфляция"
+        verbose_name_plural = "Инфляция (помесячно)"
+        ordering = ["month"]
+
+    def __str__(self):
+        return f"мес. {self.month}: {self.rate}"
+
 ```
 
 ### `calc/forms.py`
 
 ```python
+from datetime import date
 from django import forms
 
 from .models import BuildingClass, BuildingPurpose, City
@@ -237,6 +255,10 @@ class CalcForm(forms.Form):
     building_class = forms.ModelChoiceField(BuildingClass.objects.all(), label="Класс строительства")
     floors = forms.IntegerField(label="Количество этажей", min_value=1, max_value=200)
     total_area = forms.DecimalField(label="Общая площадь, м²", min_value=1, max_digits=12, decimal_places=2)
+    start_date = forms.DateField(
+        label="Дата начала строительства",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
     underground_parking = forms.BooleanField(label="Подземный паркинг", required=False)
     ground_parking = forms.BooleanField(label="Наземный отдельностоящий паркинг", required=False)
     ground_parking_spaces = forms.IntegerField(
@@ -288,7 +310,8 @@ class CalcForm(forms.Form):
 
 ```python
 from dataclasses import asdict, dataclass
-from decimal import Decimal, ROUND_CEILING
+from datetime import date
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from math import ceil
 
 DEFAULT_SQM_PER_RESIDENT = Decimal("30.00")
@@ -302,7 +325,7 @@ from .models import (
     ConstructionDuration,
     CostItem,
     CostRate,
-    Inflation,
+    MonthlyInflation,
     ParkingRate,
     Settings,
     SocialNorms,
@@ -366,6 +389,68 @@ def _interpolate_duration(total_area: Decimal) -> int | None:
     return int(points[-1][1])
 
 
+def _start_month(start_date: date, today: date | None = None) -> int:
+    """Точка старта в таблице инфляции.
+
+    Расстояние в месяцах от сегодня до start_date (вверх), затем +1.
+    01.01.2025 → 25.05.2025: 4 календ. мес + (день 25>1 → +1) = 5; старт = 6.
+    """
+    today = today or date.today()
+    months = (start_date.year - today.year) * 12 + (start_date.month - today.month)
+    if start_date.day > today.day:
+        months += 1
+    if months < 0:
+        months = 0
+    return months + 1
+
+
+def compute_inflation_increase(base_cost: Decimal, duration_months: int, start_date: date):
+    """Этапы 1–3 инфляционного удорожания. Возвращает (rows, total)."""
+    rows: list[dict] = []
+    if not duration_months or duration_months < 1:
+        return rows, Decimal("0.00")
+
+    start = _start_month(start_date)
+
+    # Этап 2: месяцев в периоде (мат. округление)
+    months_in_period = int(
+        (Decimal(duration_months) / Decimal("3")).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        )
+    )
+    if months_in_period < 1:
+        months_in_period = 1
+
+    # 3 части по долям, затраты на месяц внутри части
+    parts = [Decimal("0.30"), Decimal("0.40"), Decimal("0.30")]
+    per_month = [
+        (base_cost * p / Decimal(months_in_period)) for p in parts
+    ]
+
+    # Помесячная инфляция → словарь (с клампом к максимальному месяцу)
+    table = dict(MonthlyInflation.objects.values_list("month", "rate"))
+    if not table:
+        return rows, Decimal("0.00")
+    max_month = max(table)
+
+    total = Decimal("0")
+    cur_month = start
+    for period_idx in range(3):
+        spend = per_month[period_idx]
+        for _ in range(months_in_period):
+            rate = table.get(cur_month) or table[max_month]
+            amount = spend * rate
+            rows.append({
+                "month": cur_month if cur_month <= max_month else max_month,
+                "rate": rate,
+                "spend": spend.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                "amount": amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            })
+            total += amount
+            cur_month += 1
+
+    return rows, total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
 def calculate(
     *,
     city: City,
@@ -374,7 +459,8 @@ def calculate(
     total_area: Decimal,
     floors: int,
     underground_parking: bool,
-    ground_parking_spaces: int
+    ground_parking_spaces: int,
+    start_date: date,
 ) -> dict:
     # 1. Срок — единая таблица (area → months), линейная интерполяция
     duration_months = _interpolate_duration(total_area)
@@ -384,14 +470,11 @@ def calculate(
     price_per_sqm = rate.price_per_sqm if rate else Decimal("0")
 
     settings = Settings.objects.filter(is_active=True).first()
-    clean_coef = settings.inflation_clean_coef if settings else Decimal("0.900")
-
-    inflation = Inflation.objects.filter(is_active=True).first()
-    inflation_rate = inflation.rate if inflation else Decimal("0")
-
     base_cost = (total_area * price_per_sqm).quantize(Decimal("0.01"))
-    inflation_amount = (base_cost * clean_coef * inflation_rate).quantize(
-        Decimal("0.01")
+
+    # Инфляционное удорожание (помесячный метод)
+    inflation_rows, inflation_amount = compute_inflation_increase(
+        base_cost, duration_months or 0, start_date
     )
     construction_cost = (base_cost + inflation_amount).quantize(Decimal("0.01"))
 
@@ -473,8 +556,8 @@ def calculate(
     return {
         "duration_months": duration_months,
         "price_per_sqm": price_per_sqm,
-        "clean_coef": clean_coef,
-        "inflation_rate": inflation_rate,
+        "inflation_rows": inflation_rows,
+        "start_date": start_date,
         "base_cost": base_cost,
         "inflation_amount": inflation_amount,
         "construction_cost": construction_cost,
@@ -523,7 +606,7 @@ def index(request):
                     floors=cd["floors"],
                     total_area=cd["total_area"],
                     underground_parking=cd.get("underground_parking", False),
-                    ground_parking_spaces=cd.get("ground_parking_spaces") or 0,
+                    start_date=cd["start_date"],
                 )
             except CalcError as e:
                 error = str(e)
@@ -615,6 +698,12 @@ def classes_for_purpose(request, purpose_id: int):
         </div>
 
         <div class="field">
+            <label class="label" for="{{ form.start_date.id_for_label }}">{{ form.start_date.label }}</label>
+            {{ form.start_date }}
+            {{ form.start_date.errors }}
+        </div>
+
+        <div class="field">
             <label class="checkbox-row">
                 {{ form.underground_parking }}
                 <span>{{ form.underground_parking.label }}</span>
@@ -695,20 +784,38 @@ def classes_for_purpose(request, purpose_id: int):
             </div>
         </div>
 
-        {# Коэффициенты #}
+        {# Инфляционное удорожание #}
+        {% if result.inflation_rows %}
         <div class="result-section">
-            <h3 class="result-section-title">Коэффициенты</h3>
-            <div class="result-grid">
-                <div class="result-item">
-                    <div class="result-item-label">Очистка от инфляции</div>
-                    <div class="result-item-value">{{ result.clean_coef|floatformat:3 }}</div>
-                </div>
-                <div class="result-item">
-                    <div class="result-item-label">Ставка инфляции</div>
-                    <div class="result-item-value">{{ result.inflation_rate|floatformat:4 }}</div>
-                </div>
-            </div>
+            <h3 class="result-section-title">Инфляционное удорожание</h3>
+            <table class="cost-items-table">
+                <thead>
+                    <tr>
+                        <th class="num">Месяц</th>
+                        <th class="num">Инфляция</th>
+                        <th class="num">Затраты/мес, ₽</th>
+                        <th class="num">Удорожание, ₽</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in result.inflation_rows %}
+                    <tr class="cost-item-row">
+                        <td class="num">{{ r.month }}</td>
+                        <td class="num">{{ r.rate|floatformat:4 }}</td>
+                        <td class="num">{{ r.spend|spaces }}</td>
+                        <td class="num">{{ r.amount|spaces }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="cost-item-total">
+                        <td class="num" colspan="3">Итого удорожание</td>
+                        <td class="num">{{ result.inflation_amount|spaces }}</td>
+                    </tr>
+                </tfoot>
+            </table>
         </div>
+        {% endif %}
 
         {# Соцобъекты #}
         {% if result.doo_seats or result.sosh_seats %}
