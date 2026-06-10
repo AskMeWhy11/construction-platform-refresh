@@ -147,9 +147,13 @@
         {% if result.inflation_rows %}
         <div class="result-section">
             <details class="accordion">
-                <summary class="result-section-title accordion-summary">
-                    Инфляционное удорожание
+                <summary class="accordion-summary">
+                    <span class="accordion-head">
+                        <span class="accordion-title">Инфляционное удорожание</span>
+                        <span class="accordion-hint">Помесячный расчёт · нажмите, чтобы развернуть</span>
+                    </span>
                     <span class="accordion-meta">{{ result.inflation_amount|spaces }} ₽</span>
+                    <span class="accordion-chevron" aria-hidden="true">▾</span>
                 </summary>
                 <table class="cost-items-table">
                     <thead>
