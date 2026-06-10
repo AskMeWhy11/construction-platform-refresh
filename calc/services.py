@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from math import ceil
 
 DEFAULT_SQM_PER_RESIDENT = Decimal("30.00")
@@ -11,6 +11,7 @@ from .models import (
     BuildingPurpose,
     City,
     ConstructionDuration,
+    CostItem,
     CostRate,
     Inflation,
     ParkingRate,
@@ -76,9 +77,16 @@ def _interpolate_duration(total_area: Decimal) -> int | None:
     return int(points[-1][1])
 
 
-def calculate(*, city: City, purpose: BuildingPurpose, building_class: BuildingClass,
-              total_area: Decimal, floors: int, underground_parking: bool,
-              ground_parking_spaces: int) -> dict:
+def calculate(
+    *,
+    city: City,
+    purpose: BuildingPurpose,
+    building_class: BuildingClass,
+    total_area: Decimal,
+    floors: int,
+    underground_parking: bool,
+    ground_parking_spaces: int
+) -> dict:
     # 1. Срок — единая таблица (area → months), линейная интерполяция
     duration_months = _interpolate_duration(total_area)
 
@@ -93,11 +101,15 @@ def calculate(*, city: City, purpose: BuildingPurpose, building_class: BuildingC
     inflation_rate = inflation.rate if inflation else Decimal("0")
 
     base_cost = (total_area * price_per_sqm).quantize(Decimal("0.01"))
-    inflation_amount = (base_cost * clean_coef * inflation_rate).quantize(Decimal("0.01"))
+    inflation_amount = (base_cost * clean_coef * inflation_rate).quantize(
+        Decimal("0.01")
+    )
     construction_cost = (base_cost + inflation_amount).quantize(Decimal("0.01"))
 
     # 3. Площадь квартир
-    apartments_area = (total_area * purpose.apartments_area_ratio).quantize(Decimal("0.01"))
+    apartments_area = (total_area * purpose.apartments_area_ratio).quantize(
+        Decimal("0.01")
+    )
 
     # 4. Социалка
     # 4.1. Число жителей (норма — переопределение города → дефолт настроек → константа)
@@ -128,16 +140,46 @@ def calculate(*, city: City, purpose: BuildingPurpose, building_class: BuildingC
     doo_seats = ceil(Decimal(residents) * Decimal("0.001") * doo_per_1000)
     sosh_seats = ceil(Decimal(residents) * Decimal("0.001") * sosh_per_1000)
     if norms:
-        doo_cost = (Decimal(doo_seats) * norms.cost_per_doo_seat).quantize(Decimal("0.01"))
-        sosh_cost = (Decimal(sosh_seats) * norms.cost_per_school_seat).quantize(Decimal("0.01"))
+        doo_cost = (Decimal(doo_seats) * norms.cost_per_doo_seat).quantize(
+            Decimal("0.01")
+        )
+        sosh_cost = (Decimal(sosh_seats) * norms.cost_per_school_seat).quantize(
+            Decimal("0.01")
+        )
     else:
         doo_cost = sosh_cost = Decimal("0.00")
-    
-    
+
     # 5. Паркинг
     parking_rate = ParkingRate.objects.filter(city=city).first()
     cost_per_space = parking_rate.cost_per_space if parking_rate else Decimal("0")
-    ground_parking_cost = (Decimal(ground_parking_spaces) * cost_per_space).quantize(Decimal("0.01"))
+    ground_parking_cost = (Decimal(ground_parking_spaces) * cost_per_space).quantize(
+        Decimal("0.01")
+    )
+
+    # 6. Распределение по статьям расходов (база — стоимость строительства)
+    cost_items = []
+    cost_items_total_percent = Decimal("0")
+    cost_items_total_amount = Decimal("0")
+    items = CostItem.objects.filter(is_active=True).order_by("order", "code")
+    for item in items:
+        # сумма по статье: база × % / 100, округление ВВЕРХ до копейки
+        amount = (construction_cost * item.percent / Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_CEILING
+        )
+        cost_items.append(
+            {
+                "code": item.code,
+                "name": item.name,
+                "percent": item.percent,
+                "amount": amount,
+                "item_type": item.item_type,
+                "is_child": item.parent_id is not None,
+            }
+        )
+        # в ИТОГО — только обычные статьи и подстатьи (агрегат-сумма не учитывается)
+        if item.item_type in (CostItem.TYPE_ARTICLE, CostItem.TYPE_SUBARTICLE):
+            cost_items_total_percent += item.percent
+            cost_items_total_amount += amount
 
     return {
         "duration_months": duration_months,
@@ -157,4 +199,7 @@ def calculate(*, city: City, purpose: BuildingPurpose, building_class: BuildingC
         "underground_parking": underground_parking,
         "ground_parking_spaces": ground_parking_spaces,
         "ground_parking_cost": ground_parking_cost,
+        "cost_items": cost_items,
+        "cost_items_total_percent": cost_items_total_percent,
+        "cost_items_total_amount": cost_items_total_amount,
     }

@@ -3,163 +3,21 @@
 ## Tree
 
 ```
-calc/models.py
-calc/services.py
+calc/admin.py
+calc/views.py
+calc/templates/calc/result.html
+calc/templates/calc/form.html
 ```
 
-### `calc/models.py`
+### `calc/admin.py`
 
 ```python
-from decimal import Decimal
-from django.db import models
+from django.contrib import admin
+from django.shortcuts import redirect
+from django.urls import path, reverse
+from django.utils.html import format_html
 
-
-class City(models.Model):
-    name = models.CharField("Город", max_length=100, unique=True)
-
-    class Meta:
-        verbose_name = "Город"
-        verbose_name_plural = "Города"
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
-
-
-class BuildingPurpose(models.Model):
-    """Функциональное назначение (для расчёта площади квартир и формы)."""
-    name = models.CharField("Назначение", max_length=100, unique=True)
-    apartments_area_ratio = models.DecimalField(
-        "Доля площади квартир",
-        max_digits=4, decimal_places=3, default=Decimal("0.000"),
-        help_text="0.000–1.000. Например, 0.750 = 75% от общей площади.",
-    )
-    allowed_classes = models.ManyToManyField(
-        "BuildingClass",
-        verbose_name="Доступные классы строительства",
-        related_name="purposes",
-        blank=True,
-        help_text="Классы, которые будут предлагаться в форме при выборе этого назначения.",
-    )
-
-    class Meta:
-        verbose_name = "Функциональное назначение"
-        verbose_name_plural = "Функциональные назначения"
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
-
-
-class BuildingClass(models.Model):
-    name = models.CharField("Класс/Тип объекта", max_length=100, unique=True)
-    order = models.PositiveIntegerField("Порядок", default=0)
-
-    class Meta:
-        verbose_name = "Класс строительства"
-        verbose_name_plural = "Классы строительства"
-        ordering = ["order", "name"]
-
-    def __str__(self):
-        return self.name
-
-
-class CostRate(models.Model):
-    """Себестоимость ₽/м² по (город × класс)."""
-    city = models.ForeignKey(City, on_delete=models.CASCADE, verbose_name="Город")
-    building_class = models.ForeignKey(BuildingClass, on_delete=models.CASCADE, verbose_name="Класс")
-    price_per_sqm = models.DecimalField("Цена за м², ₽", max_digits=12, decimal_places=2)
-
-    class Meta:
-        verbose_name = "Себестоимость"
-        verbose_name_plural = "Себестоимость (таблица)"
-        unique_together = [("city", "building_class")]
-        ordering = ["city__name", "building_class__order"]
-
-    def __str__(self):
-        return f"{self.city} / {self.building_class}: {self.price_per_sqm} ₽/м²"
-
-
-class ConstructionDuration(models.Model):
-    """Опорная точка зависимости «общая площадь → срок строительства, мес.».
-
-    Срок для произвольной площади вычисляется линейной интерполяцией между
-    ближайшими опорными точками. За пределами диапазона срок клампится
-    к крайним значениям таблицы.
-    """
-    area = models.PositiveIntegerField("Площадь, м²", unique=True)
-    months = models.PositiveSmallIntegerField("Срок строительства, мес.")
-
-    class Meta:
-        verbose_name = "Срок строительства"
-        verbose_name_plural = "Сроки строительства"
-        ordering = ["area"]
-
-    def __str__(self):
-        return f"{self.area:,} м² → {self.months} мес."
-
-
-class Inflation(models.Model):
-    rate = models.DecimalField("Ставка инфляции", max_digits=6, decimal_places=4, help_text="Например, 0.0732")
-    is_active = models.BooleanField("Активна", default=False)
-    note = models.CharField("Комментарий", max_length=200, blank=True)
-
-    class Meta:
-        verbose_name = "Инфляция"
-        verbose_name_plural = "Инфляция"
-
-    def __str__(self):
-        return f"{self.rate} ({'актив' if self.is_active else 'архив'})"
-
-
-class SocialNorms(models.Model):
-    sqm_per_doo_seat = models.DecimalField("м² на место ДОО", max_digits=8, decimal_places=2)
-    cost_per_doo_seat = models.DecimalField("Стоимость места ДОО, ₽", max_digits=12, decimal_places=2)
-    sqm_per_school_seat = models.DecimalField("м² на место СОШ", max_digits=8, decimal_places=2)
-    cost_per_school_seat = models.DecimalField("Стоимость места СОШ, ₽", max_digits=12, decimal_places=2)
-    is_active = models.BooleanField("Активна", default=False)
-
-    class Meta:
-        verbose_name = "Норматив социалки"
-        verbose_name_plural = "Нормативы социалки"
-
-    def __str__(self):
-        return f"ДОО {self.sqm_per_doo_seat}м²/{self.cost_per_doo_seat}₽ | СОШ {self.sqm_per_school_seat}м²/{self.cost_per_school_seat}₽"
-
-
-class ParkingRate(models.Model):
-    city = models.ForeignKey(City, on_delete=models.CASCADE, verbose_name="Город", unique=True)
-    cost_per_space = models.DecimalField("Стоимость машиноместа, ₽", max_digits=12, decimal_places=2)
-
-    class Meta:
-        verbose_name = "Тариф наземного паркинга"
-        verbose_name_plural = "Наземный паркинг (тарифы)"
-
-    def __str__(self):
-        return f"{self.city}: {self.cost_per_space} ₽/мм"
-
-
-class Settings(models.Model):
-    inflation_clean_coef = models.DecimalField(
-        "Коэф. очистки от инфляции", max_digits=4, decimal_places=3, default=Decimal("0.900"),
-    )
-    is_active = models.BooleanField("Активна", default=False)
-
-    class Meta:
-        verbose_name = "Настройка расчёта"
-        verbose_name_plural = "Настройки расчёта"
-
-    def __str__(self):
-        return f"clean={self.inflation_clean_coef} ({'актив' if self.is_active else 'архив'})"
-```
-
-### `calc/services.py`
-
-```python
-from dataclasses import asdict, dataclass
-from decimal import Decimal
-from math import ceil
-
+from . import views_admin
 from .models import (
     BuildingClass,
     BuildingPurpose,
@@ -173,117 +31,444 @@ from .models import (
 )
 
 
-class CalcError(Exception):
-    pass
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    list_display = ("name",)
+    search_fields = ("name",)
 
 
-@dataclass
-class CalcResult:
-    duration_months: int | None
-    construction_cost: Decimal
-    base_cost: Decimal
-    inflation_amount: Decimal
-    inflation_rate: Decimal
-    clean_coef: Decimal
-    total_area: Decimal
-    apartments_area: Decimal
-    underground_parking: bool
-    ground_parking_spaces: int
-    ground_parking_cost: Decimal
-    doo_seats: int
-    doo_cost: Decimal
-    sosh_seats: int
-    sosh_cost: Decimal
-    price_per_sqm: Decimal
+@admin.register(BuildingPurpose)
+class BuildingPurposeAdmin(admin.ModelAdmin):
+    list_display = ("name", "apartments_area_ratio", "allowed_classes_count")
+    search_fields = ("name",)
+    filter_horizontal = ("allowed_classes",)
 
-    def as_dict(self):
-        return asdict(self)
+    @admin.display(description="Классов")
+    def allowed_classes_count(self, obj):
+        return obj.allowed_classes.count()
 
 
-def _interpolate_duration(total_area: Decimal) -> int | None:
-    """Линейная интерполяция срока строительства по таблице ConstructionDuration.
+@admin.register(BuildingClass)
+class BuildingClassAdmin(admin.ModelAdmin):
+    list_display = ("name", "order")
+    list_editable = ("order",)
 
-    Возвращает срок (мес., целое, округление к ближайшему). Если точек < 2 —
-    возвращает None (срок не определён).
-    """
-    points = list(
-        ConstructionDuration.objects.order_by("area").values_list("area", "months")
+
+class CostRateAdmin(admin.ModelAdmin):
+    list_display = ("city", "building_class", "price_per_sqm")
+    list_filter = ("city", "building_class")
+    search_fields = ("city__name", "building_class__name")
+    list_editable = ("price_per_sqm",)
+    change_list_template = "calc/admin_costrate_changelist.html"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path("pivot/", self.admin_site.admin_view(views_admin.cost_pivot),
+                 name="calc_costrate_pivot"),
+            path("pivot/save/", self.admin_site.admin_view(views_admin.cost_pivot_save),
+                 name="calc_costrate_pivot_save"),
+            path("pivot/add-city/", self.admin_site.admin_view(views_admin.cost_pivot_add_city),
+                 name="calc_costrate_pivot_add_city"),
+            path("pivot/import/preview/",
+                 self.admin_site.admin_view(views_admin.cost_pivot_import_preview),
+                 name="calc_costrate_pivot_import_preview"),
+            path("pivot/import/apply/",
+                 self.admin_site.admin_view(views_admin.cost_pivot_import_apply),
+                 name="calc_costrate_pivot_import_apply"),
+        ]
+        return custom + urls
+
+
+admin.site.register(CostRate, CostRateAdmin)
+
+
+# Алиасы под namespace, который ждёт views_admin (reverse 'calc_admin:...').
+# Используем имена URL-ов admin-сайта напрямую — переопределим reverse через шорткат.
+# Чтобы не плодить namespace, переписываем views_admin reverse на admin-имена:
+# (см. правки ниже в шаблоне — используем {% url 'admin:calc_costrate_pivot_save' %})
+
+
+@admin.register(ConstructionDuration)
+class ConstructionDurationAdmin(admin.ModelAdmin):
+    list_display = ("area", "months")
+    list_editable = ("months",)
+    list_display_links = ("area",)
+    ordering = ("area",)
+    list_per_page = 100
+    search_fields = ("area",)
+
+
+@admin.register(Inflation)
+class InflationAdmin(admin.ModelAdmin):
+    list_display = ("rate", "is_active", "note")
+    list_editable = ("is_active",)
+
+
+@admin.register(SocialNorms)
+class SocialNormsAdmin(admin.ModelAdmin):
+    list_display = (
+        "sqm_per_doo_seat",
+        "cost_per_doo_seat",
+        "sqm_per_school_seat",
+        "cost_per_school_seat",
+        "is_active",
     )
-    if len(points) < 2:
-        return None
-
-    area = float(total_area)
-
-    if area <= points[0][0]:
-        return int(points[0][1])
-    if area >= points[-1][0]:
-        return int(points[-1][1])
-
-    for (a1, m1), (a2, m2) in zip(points, points[1:]):
-        if a1 <= area <= a2:
-            if a2 == a1:
-                return int(m1)
-            t = (area - a1) / (a2 - a1)
-            return int(round(m1 + (m2 - m1) * t))
-
-    return int(points[-1][1])
 
 
-def calculate(*, city: City, purpose: BuildingPurpose, building_class: BuildingClass,
-              total_area: Decimal, floors: int, underground_parking: bool,
-              ground_parking_spaces: int) -> dict:
-    # 1. Срок — единая таблица (area → months), линейная интерполяция
-    duration_months = _interpolate_duration(total_area)
+@admin.register(ParkingRate)
+class ParkingRateAdmin(admin.ModelAdmin):
+    list_display = ("city", "cost_per_space")
+    list_editable = ("cost_per_space",)
 
-    # 2. Стоимость строительства
-    rate = CostRate.objects.filter(city=city, building_class=building_class).first()
-    price_per_sqm = rate.price_per_sqm if rate else Decimal("0")
 
-    settings = Settings.objects.filter(is_active=True).first()
-    clean_coef = settings.inflation_clean_coef if settings else Decimal("0.900")
+@admin.register(Settings)
+class SettingsAdmin(admin.ModelAdmin):
+    list_display = ("inflation_clean_coef", "is_active")
 
-    inflation = Inflation.objects.filter(is_active=True).first()
-    inflation_rate = inflation.rate if inflation else Decimal("0")
 
-    base_cost = (total_area * price_per_sqm).quantize(Decimal("0.01"))
-    inflation_amount = (base_cost * clean_coef * inflation_rate).quantize(Decimal("0.01"))
-    construction_cost = (base_cost + inflation_amount).quantize(Decimal("0.01"))
+admin.site.site_header = "Экспресс-стройэкспертиза — админка"
+admin.site.site_title = "Экспресс-стройэкспертиза"
+admin.site.index_title = "Управление справочниками"
+```
 
-    # 3. Площадь квартир
-    apartments_area = (total_area * purpose.apartments_area_ratio).quantize(Decimal("0.01"))
+### `calc/views.py`
 
-    # 4. Социалка
-    norms = SocialNorms.objects.filter(is_active=True).first()
-    if norms:
-        doo_seats = ceil(apartments_area / norms.sqm_per_doo_seat)
-        doo_cost = (Decimal(doo_seats) * norms.cost_per_doo_seat).quantize(Decimal("0.01"))
-        sosh_seats = ceil(apartments_area / norms.sqm_per_school_seat)
-        sosh_cost = (Decimal(sosh_seats) * norms.cost_per_school_seat).quantize(Decimal("0.01"))
+```python
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.views.decorators.http import require_GET
+
+from .forms import CalcForm
+from .models import BuildingClass
+from .services import CalcError, calculate
+
+
+def index(request):
+    # ... без изменений
+    result = None
+    error = None
+    if request.method == "POST":
+        form = CalcForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                result = calculate(
+                    city=cd["city"],
+                    purpose=cd["purpose"],
+                    building_class=cd["building_class"],
+                    floors=cd["floors"],
+                    total_area=cd["total_area"],
+                    underground_parking=cd.get("underground_parking", False),
+                    ground_parking_spaces=cd.get("ground_parking_spaces") or 0,
+                )
+            except CalcError as e:
+                error = str(e)
     else:
-        doo_seats = sosh_seats = 0
-        doo_cost = sosh_cost = Decimal("0.00")
+        form = CalcForm()
 
-    # 5. Паркинг
-    parking_rate = ParkingRate.objects.filter(city=city).first()
-    cost_per_space = parking_rate.cost_per_space if parking_rate else Decimal("0")
-    ground_parking_cost = (Decimal(ground_parking_spaces) * cost_per_space).quantize(Decimal("0.01"))
+    return render(request, "calc/form.html", {
+        "form": form,
+        "result": result,
+        "error": error,
+        "active": "calc",
+    })
 
-    return {
-        "duration_months": duration_months,
-        "price_per_sqm": price_per_sqm,
-        "clean_coef": clean_coef,
-        "inflation_rate": inflation_rate,
-        "base_cost": base_cost,
-        "inflation_amount": inflation_amount,
-        "construction_cost": construction_cost,
-        "total_area": total_area,
-        "apartments_area": apartments_area,
-        "doo_seats": doo_seats,
-        "doo_cost": doo_cost,
-        "sosh_seats": sosh_seats,
-        "sosh_cost": sosh_cost,
-        "underground_parking": underground_parking,
-        "ground_parking_spaces": ground_parking_spaces,
-        "ground_parking_cost": ground_parking_cost,
+
+def history(request):
+    return render(request, "calc/history.html", {"active": "history"})
+
+
+@require_GET
+def classes_for_purpose(request, purpose_id: int):
+    qs = (
+        BuildingClass.objects
+        .filter(purposes__id=purpose_id)
+        .order_by("order", "name")
+        .values("id", "name")
+    )
+    return JsonResponse({"classes": list(qs)})
+```
+
+### `calc/templates/calc/form.html`
+
+```
+{% extends "calc/base.html" %}
+{% load calc_format %}
+
+{% block title %}Калькулятор — СтройКалькулятор{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <p class="hero-eyebrow">Калькулятор</p>
+    <h1 class="hero-title">Расчёт стоимости строительства</h1>
+    <p class="hero-sub">
+        Параметрический расчёт на базе нормативных стоимостей,
+        классов строительства и поправочных коэффициентов.
+    </p>
+</section>
+
+<div class="split">
+    {# ── Левая карточка: форма ─────────────────────────────────────── #}
+    <form method="post" class="card" novalidate>
+        {% csrf_token %}
+        <h2 class="card-title">Параметры проекта</h2>
+
+        {% if error %}
+        <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+
+        <div class="field">
+            <label class="label" for="{{ form.city.id_for_label }}">{{ form.city.label }}</label>
+            {{ form.city }}
+            {{ form.city.errors }}
+        </div>
+
+        <div class="field">
+            <label class="label" for="{{ form.purpose.id_for_label }}">{{ form.purpose.label }}</label>
+            {{ form.purpose }}
+            {{ form.purpose.errors }}
+        </div>
+
+        <div class="field">
+            <label class="label" for="{{ form.building_class.id_for_label }}">{{ form.building_class.label }}</label>
+            <div data-classes-field data-url-template="{% url 'calc:classes_for_purpose' 0 %}">
+                {{ form.building_class }}
+            </div>
+            {{ form.building_class.errors }}
+        </div>
+
+        <div class="field-row">
+            <div class="field">
+                <label class="label" for="{{ form.floors.id_for_label }}">{{ form.floors.label }}</label>
+                {{ form.floors }}
+                {{ form.floors.errors }}
+            </div>
+            <div class="field">
+                <label class="label" for="{{ form.total_area.id_for_label }}">{{ form.total_area.label }}</label>
+                {{ form.total_area }}
+                {{ form.total_area.errors }}
+            </div>
+        </div>
+
+        <div class="field">
+            <label class="checkbox-row">
+                {{ form.underground_parking }}
+                <span>{{ form.underground_parking.label }}</span>
+            </label>
+            {{ form.underground_parking.errors }}
+        </div>
+
+        <div class="field">
+            <label class="checkbox-row">
+                {{ form.ground_parking }}
+                <span>{{ form.ground_parking.label }}</span>
+            </label>
+            {{ form.ground_parking.errors }}
+        </div>
+
+        <div class="field {% if not form.ground_parking.value %}hidden{% endif %}" data-depends-on="ground_parking">
+            <label class="label" for="{{ form.ground_parking_spaces.id_for_label }}">
+                {{ form.ground_parking_spaces.label }}
+            </label>
+            {{ form.ground_parking_spaces }}
+            {{ form.ground_parking_spaces.errors }}
+        </div>
+
+        <button type="submit" class="btn btn-primary">Рассчитать проект</button>
+    </form>
+
+    {# ── Правая карточка: результаты ──────────────────────────────── #}
+    <div class="card">
+        <h2 class="card-title">Результат расчёта</h2>
+
+        {% if result %}
+        {# Hero — итоговая стоимость строительства #}
+        <div class="result-hero">
+            <p class="result-hero-label">Стоимость строительства</p>
+            <p class="result-hero-value">
+                {{ result.construction_cost|spaces }}<span class="suffix">₽</span>
+            </p>
+            <div class="result-hero-meta">
+                <div>
+                    Цена за м²
+                    <b>{{ result.price_per_sqm|spaces }} ₽</b>
+                </div>
+                <div>
+                    Площадь
+                    <b>{{ result.total_area|spaces:2 }} м²</b>
+                </div>
+                {% if result.duration_months %}
+                <div>
+                    Срок строительства
+                    <b>{{ result.duration_months }} мес.</b>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {# Базовые показатели #}
+        <div class="result-section">
+            <h3 class="result-section-title">Структура стоимости</h3>
+            <div class="result-grid result-grid-3">
+                <div class="result-item">
+                    <div class="result-item-label">Базовая стоимость</div>
+                    <div class="result-item-value">
+                        {{ result.base_cost|spaces }}<span class="suffix">₽</span>
+                    </div>
+                </div>
+                <div class="result-item">
+                    <div class="result-item-label">Инфляция</div>
+                    <div class="result-item-value">
+                        {{ result.inflation_amount|spaces }}<span class="suffix">₽</span>
+                    </div>
+                </div>
+                <div class="result-item">
+                    <div class="result-item-label">Площадь квартир</div>
+                    <div class="result-item-value">
+                        {{ result.apartments_area|spaces }}<span class="suffix">м²</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Коэффициенты #}
+        <div class="result-section">
+            <h3 class="result-section-title">Коэффициенты</h3>
+            <div class="result-grid">
+                <div class="result-item">
+                    <div class="result-item-label">Очистка от инфляции</div>
+                    <div class="result-item-value">{{ result.clean_coef|floatformat:3 }}</div>
+                </div>
+                <div class="result-item">
+                    <div class="result-item-label">Ставка инфляции</div>
+                    <div class="result-item-value">{{ result.inflation_rate|floatformat:4 }}</div>
+                </div>
+            </div>
+        </div>
+
+        {# Соцобъекты #}
+        {% if result.doo_seats or result.sosh_seats %}
+        <div class="result-section">
+            <h3 class="result-section-title">Социальная инфраструктура</h3>
+            <div class="result-grid">
+                {% if result.doo_seats %}
+                <div class="result-item">
+                    <div class="result-item-label">ДОО — мест</div>
+                    <div class="result-item-value">
+                        {{ result.doo_seats }}
+                        <span class="suffix">{{ result.doo_cost|spaces }} ₽</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if result.sosh_seats %}
+                <div class="result-item">
+                    <div class="result-item-label">СОШ — мест</div>
+                    <div class="result-item-value">
+                        {{ result.sosh_seats }}
+                        <span class="suffix">{{ result.sosh_cost|spaces }} ₽</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# Паркинг #}
+        {% if result.underground_parking or result.ground_parking_spaces %}
+        <div class="result-section">
+            <h3 class="result-section-title">Паркинг</h3>
+            <div class="result-grid">
+                {% if result.underground_parking %}
+                <div class="result-item">
+                    <div class="result-item-label">Подземный</div>
+                    <div class="result-item-value">да</div>
+                </div>
+                {% endif %}
+                {% if result.ground_parking_spaces %}
+                <div class="result-item">
+                    <div class="result-item-label">Наземный · {{ result.ground_parking_spaces }} м/м</div>
+                    <div class="result-item-value">
+                        {{ result.ground_parking_cost|spaces }}<span class="suffix">₽</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="result-empty">
+            <div class="result-empty-icon">∑</div>
+            <p class="result-empty-title">Здесь появится расчёт</p>
+            <p class="result-empty-sub">
+                Заполните параметры слева и нажмите «Рассчитать проект».
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    const purposeEl = document.querySelector('[name="purpose"]');
+    const wrapper = document.querySelector('[data-classes-field]');
+    if (!purposeEl || !wrapper) return;
+
+    const classEl = wrapper.querySelector('select[name="building_class"]');
+    const urlTemplate = wrapper.dataset.urlTemplate;  // .../api/classes/0/
+
+    function tsOf(el) { return el.tomselect || null; }
+
+    async function loadClasses(purposeId, preserve) {
+        const ts = tsOf(classEl);
+        if (!purposeId) {
+            if (ts) {
+                ts.clear();
+                ts.clearOptions();
+            } else {
+                classEl.innerHTML = '<option value="">———</option>';
+            }
+            return;
+        }
+        const url = urlTemplate.replace(/\/0\/?$/, '/' + purposeId + '/');
+        const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        const current = preserve ? (ts ? ts.getValue() : classEl.value) : '';
+
+        if (ts) {
+            ts.clear(true);
+            ts.clearOptions();
+            ts.addOption(data.classes.map(c => ({ value: String(c.id), text: c.name })));
+            ts.refreshOptions(false);
+            if (current && data.classes.some(c => String(c.id) === String(current))) {
+                ts.setValue(current, true);
+            }
+        } else {
+            classEl.innerHTML = '<option value="">———</option>';
+            for (const c of data.classes) {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                if (String(c.id) === String(current)) opt.selected = true;
+                classEl.appendChild(opt);
+            }
+        }
     }
+
+    // Слушаем как нативное change, так и Tom Select-овское
+    purposeEl.addEventListener('change', () => loadClasses(purposeEl.value, false));
+
+    // Догрузка при восстановлении формы
+    const initialPurpose = purposeEl.value;
+    if (initialPurpose && classEl.options.length <= 1) {
+        loadClasses(initialPurpose, true);
+    }
+})();
+</script>
+{% endblock %}
 ```

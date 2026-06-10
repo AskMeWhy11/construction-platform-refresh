@@ -202,6 +202,45 @@
         </div>
         {% endif %}
 
+        {# Статьи расходов на строительство #}
+        {% if result.cost_items %}
+        <div class="result-section">
+            <h3 class="result-section-title">Статьи расходов на строительство</h3>
+            <table class="cost-items-table">
+                <thead>
+                    <tr>
+                        <th>Код</th>
+                        <th>Наименование</th>
+                        <th class="num">% от базы</th>
+                        <th class="num">Сумма, ₽</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ci in result.cost_items %}
+                    <tr
+                        class="cost-item-row cost-item-{{ ci.item_type }}{% if ci.is_child %} cost-item-child{% endif %}">
+                        <td class="code">{{ ci.code }}</td>
+                        <td class="name">{{ ci.name }}</td>
+                        <td class="num">{{ ci.percent|floatformat:2 }}%</td>
+                        <td class="num">{{ ci.amount|spaces }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="cost-item-total{% if result.cost_items_total_percent > 100 %} cost-item-over{% endif %}">
+                        <td></td>
+                        <td>ИТОГО</td>
+                        <td class="num">{{ result.cost_items_total_percent|floatformat:2 }}%</td>
+                        <td class="num">{{ result.cost_items_total_amount|spaces }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+            {% if result.cost_items_total_percent > 100 %}
+            <p class="cost-items-warning">⚠ Сумма процентов превышает 100%</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
         {% else %}
         <div class="result-empty">
             <div class="result-empty-icon">∑</div>
@@ -217,62 +256,62 @@
 
 {% block extra_scripts %}
 <script>
-(function () {
-    const purposeEl = document.querySelector('[name="purpose"]');
-    const wrapper = document.querySelector('[data-classes-field]');
-    if (!purposeEl || !wrapper) return;
+    (function () {
+        const purposeEl = document.querySelector('[name="purpose"]');
+        const wrapper = document.querySelector('[data-classes-field]');
+        if (!purposeEl || !wrapper) return;
 
-    const classEl = wrapper.querySelector('select[name="building_class"]');
-    const urlTemplate = wrapper.dataset.urlTemplate;  // .../api/classes/0/
+        const classEl = wrapper.querySelector('select[name="building_class"]');
+        const urlTemplate = wrapper.dataset.urlTemplate;  // .../api/classes/0/
 
-    function tsOf(el) { return el.tomselect || null; }
+        function tsOf(el) { return el.tomselect || null; }
 
-    async function loadClasses(purposeId, preserve) {
-        const ts = tsOf(classEl);
-        if (!purposeId) {
+        async function loadClasses(purposeId, preserve) {
+            const ts = tsOf(classEl);
+            if (!purposeId) {
+                if (ts) {
+                    ts.clear();
+                    ts.clearOptions();
+                } else {
+                    classEl.innerHTML = '<option value="">———</option>';
+                }
+                return;
+            }
+            const url = urlTemplate.replace(/\/0\/?$/, '/' + purposeId + '/');
+            const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            const current = preserve ? (ts ? ts.getValue() : classEl.value) : '';
+
             if (ts) {
-                ts.clear();
+                ts.clear(true);
                 ts.clearOptions();
+                ts.addOption(data.classes.map(c => ({ value: String(c.id), text: c.name })));
+                ts.refreshOptions(false);
+                if (current && data.classes.some(c => String(c.id) === String(current))) {
+                    ts.setValue(current, true);
+                }
             } else {
                 classEl.innerHTML = '<option value="">———</option>';
-            }
-            return;
-        }
-        const url = urlTemplate.replace(/\/0\/?$/, '/' + purposeId + '/');
-        const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
-        if (!resp.ok) return;
-        const data = await resp.json();
-
-        const current = preserve ? (ts ? ts.getValue() : classEl.value) : '';
-
-        if (ts) {
-            ts.clear(true);
-            ts.clearOptions();
-            ts.addOption(data.classes.map(c => ({ value: String(c.id), text: c.name })));
-            ts.refreshOptions(false);
-            if (current && data.classes.some(c => String(c.id) === String(current))) {
-                ts.setValue(current, true);
-            }
-        } else {
-            classEl.innerHTML = '<option value="">———</option>';
-            for (const c of data.classes) {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.name;
-                if (String(c.id) === String(current)) opt.selected = true;
-                classEl.appendChild(opt);
+                for (const c of data.classes) {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.name;
+                    if (String(c.id) === String(current)) opt.selected = true;
+                    classEl.appendChild(opt);
+                }
             }
         }
-    }
 
-    // Слушаем как нативное change, так и Tom Select-овское
-    purposeEl.addEventListener('change', () => loadClasses(purposeEl.value, false));
+        // Слушаем как нативное change, так и Tom Select-овское
+        purposeEl.addEventListener('change', () => loadClasses(purposeEl.value, false));
 
-    // Догрузка при восстановлении формы
-    const initialPurpose = purposeEl.value;
-    if (initialPurpose && classEl.options.length <= 1) {
-        loadClasses(initialPurpose, true);
-    }
-})();
+        // Догрузка при восстановлении формы
+        const initialPurpose = purposeEl.value;
+        if (initialPurpose && classEl.options.length <= 1) {
+            loadClasses(initialPurpose, true);
+        }
+    })();
 </script>
 {% endblock %}

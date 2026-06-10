@@ -167,3 +167,42 @@ class Settings(models.Model):
 
     def __str__(self):
         return f"clean={self.inflation_clean_coef} ({'актив' if self.is_active else 'архив'})"
+    
+class CostItem(models.Model):
+    """Статья расходов на строительство. % считается от стоимости строительства."""
+
+    TYPE_ARTICLE = "article"
+    TYPE_SUM = "sum"
+    TYPE_SUBARTICLE = "subarticle"
+    TYPE_CHOICES = [
+        (TYPE_ARTICLE, "статья"),
+        (TYPE_SUM, "Σ сумма"),
+        (TYPE_SUBARTICLE, "подстатья"),
+    ]
+
+    code = models.CharField("Код", max_length=20)
+    name = models.CharField("Наименование", max_length=400)
+    percent = models.DecimalField(
+        "% от базы", max_digits=7, decimal_places=2, default=Decimal("0.00"),
+        help_text="Процент от стоимости строительства.",
+    )
+    order = models.PositiveIntegerField("Порядок", default=0)
+    item_type = models.CharField("Тип", max_length=20, choices=TYPE_CHOICES, default=TYPE_ARTICLE)
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="children", verbose_name="Родительская статья",
+    )
+    is_active = models.BooleanField("Активна", default=True)
+
+    class Meta:
+        verbose_name = "Статья расходов"
+        verbose_name_plural = "Статьи расходов на строительство"
+        ordering = ["order", "code"]
+
+    def __str__(self):
+        return f"{self.code} {self.name}"
+
+    @property
+    def counts_in_total(self) -> bool:
+        """В ИТОГО входят только обычные статьи и подстатьи (не агрегат-сумма)."""
+        return self.item_type in (self.TYPE_ARTICLE, self.TYPE_SUBARTICLE)

@@ -9,6 +9,7 @@ from .models import (
     BuildingPurpose,
     City,
     ConstructionDuration,
+    CostItem,
     CostRate,
     Inflation,
     ParkingRate,
@@ -111,6 +112,26 @@ class ParkingRateAdmin(admin.ModelAdmin):
 @admin.register(Settings)
 class SettingsAdmin(admin.ModelAdmin):
     list_display = ("inflation_clean_coef", "is_active")
+
+
+class CostItemChildInline(admin.TabularInline):
+    model = CostItem
+    fk_name = "parent"
+    extra = 0
+    fields = ("code", "name", "percent", "order", "item_type", "is_active")
+    verbose_name = "Подстатья"
+    verbose_name_plural = "Подстатьи"
+
+
+@admin.register(CostItem)
+class CostItemAdmin(admin.ModelAdmin):
+    list_display = ("code", "name", "percent", "order", "item_type", "parent", "is_active")
+    list_editable = ("percent", "order", "is_active")
+    list_display_links = ("code",)
+    list_filter = ("item_type", "is_active")
+    search_fields = ("code", "name")
+    ordering = ("order", "code")
+    inlines = [CostItemChildInline]
 
 
 admin.site.site_header = "Экспресс-стройэкспертиза — админка"
