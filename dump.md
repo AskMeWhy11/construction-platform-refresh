@@ -8,6 +8,7 @@ calc/forms.py
 calc/services.py
 calc/views.py
 calc/templates/calc/form.html
+calc/static/calc/app.css
 ```
 
 ### `calc/models.py`
@@ -591,7 +592,6 @@ from .services import CalcError, calculate
 
 
 def index(request):
-    # ... без изменений
     result = None
     error = None
     if request.method == "POST":
@@ -606,6 +606,7 @@ def index(request):
                     floors=cd["floors"],
                     total_area=cd["total_area"],
                     underground_parking=cd.get("underground_parking", False),
+                    ground_parking_spaces=cd.get("ground_parking_spaces") or 0,
                     start_date=cd["start_date"],
                 )
             except CalcError as e:
@@ -787,33 +788,34 @@ def classes_for_purpose(request, purpose_id: int):
         {# Инфляционное удорожание #}
         {% if result.inflation_rows %}
         <div class="result-section">
-            <h3 class="result-section-title">Инфляционное удорожание</h3>
-            <table class="cost-items-table">
-                <thead>
-                    <tr>
-                        <th class="num">Месяц</th>
-                        <th class="num">Инфляция</th>
-                        <th class="num">Затраты/мес, ₽</th>
-                        <th class="num">Удорожание, ₽</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in result.inflation_rows %}
-                    <tr class="cost-item-row">
-                        <td class="num">{{ r.month }}</td>
-                        <td class="num">{{ r.rate|floatformat:4 }}</td>
-                        <td class="num">{{ r.spend|spaces }}</td>
-                        <td class="num">{{ r.amount|spaces }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr class="cost-item-total">
-                        <td class="num" colspan="3">Итого удорожание</td>
-                        <td class="num">{{ result.inflation_amount|spaces }}</td>
-                    </tr>
-                </tfoot>
-            </table>
+            <details class="accordion">
+                <summary class="result-section-title accordion-summary">
+                    Инфляционное удорожание
+                    <span class="accordion-meta">{{ result.inflation_amount|spaces }} ₽</span>
+                </summary>
+                <table class="cost-items-table">
+                    <thead>
+                        <tr>
+                            <th class="num">Затраты/мес, ₽</th>
+                            <th class="num">Удорожание, ₽</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in result.inflation_rows %}
+                        <tr class="cost-item-row">
+                            <td class="num">{{ r.spend|spaces }}</td>
+                            <td class="num">{{ r.amount|spaces }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="cost-item-total">
+                            <td class="num">Итого удорожание</td>
+                            <td class="num">{{ result.inflation_amount|spaces }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </details>
         </div>
         {% endif %}
 
@@ -980,4 +982,763 @@ def classes_for_purpose(request, purpose_id: int):
     })();
 </script>
 {% endblock %}
+```
+
+### `calc/static/calc/app.css`
+
+```
+/* ==========================================================================
+   Шрифты Сбера
+   ========================================================================== */
+@font-face {
+    font-family: "SB Sans Text";
+    src: url("fonts/SBSansText-Light.woff2") format("woff2"),
+         url("fonts/SBSansText-Light.woff") format("woff");
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "SB Sans Text";
+    src: url("fonts/SBSansText-Regular.woff2") format("woff2"),
+         url("fonts/SBSansText-Regular.woff") format("woff");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "SB Sans Text";
+    src: url("fonts/SBSansText-Medium.woff2") format("woff2"),
+         url("fonts/SBSansText-Medium.woff") format("woff");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "SB Sans Text";
+    src: url("fonts/SBSansText-Semibold.woff2") format("woff2"),
+         url("fonts/SBSansText-Semibold.woff") format("woff");
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "SB Sans Display";
+    src: url("fonts/SBSansDisplay-Regular.woff2") format("woff2"),
+         url("fonts/SBSansDisplay-Regular.woff") format("woff");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* ==========================================================================
+   Дизайн-токены (палитра Сбера)
+   ========================================================================== */
+:root {
+    /* Brand */
+    --sber-green:        #21A19A;
+    --sber-green-deep:   #107F8C;
+    --sber-ink:          #005E7F;
+    --sber-arctic:       #42E3B4;
+    --sber-mint-100:     #BEF8EC;
+    --sber-mint-50:      #E7FFFF;
+
+    /* Семантика — light */
+    --bg:                #F4F6F8;
+    --surface:           #FFFFFF;
+    --surface-2:         #FAFBFC;
+    --surface-soft:      var(--sber-mint-50);
+    --border:            #E4E8EC;
+    --border-strong:     #D0D6DC;
+
+    --text:              #1D2733;
+    --text-soft:         #5B6876;
+    --text-muted:        #8A96A3;
+
+    --accent:            var(--sber-green);
+    --accent-hover:      var(--sber-green-deep);
+    --accent-soft:       var(--sber-mint-50);
+    --accent-on:         #FFFFFF;
+
+    --danger:            #E74C3C;
+    --warning:           #F39C12;
+
+    --shadow-sm:         0 1px 2px rgba(20, 30, 40, .04);
+    --shadow-md:         0 6px 20px rgba(20, 30, 40, .06);
+
+    --radius:            14px;
+    --radius-sm:         10px;
+    --radius-xs:         8px;
+
+    --font-text:    "SB Sans Text", -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    --font-display: "SB Sans Display", "SB Sans Text", -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Тёмная тема */
+body.theme-dark {
+    --bg:                #0F1620;
+    --surface:           #1A2330;
+    --surface-2:         #212C3B;
+    --surface-soft:      #16302E;
+    --border:            #2C3A4D;
+    --border-strong:     #3A4B62;
+
+    --text:              #E6EDF3;
+    --text-soft:         #B1BBC6;
+    --text-muted:        #7D8893;
+
+    --accent:            var(--sber-arctic);
+    --accent-hover:      #6CECC4;
+    --accent-soft:       #16302E;
+    --accent-on:         #0F1620;
+
+    --shadow-sm:         0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-md:         0 6px 20px rgba(0, 0, 0, .4);
+}
+
+/* ==========================================================================
+   База
+   ========================================================================== */
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-text);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a { color: var(--accent-hover); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+::selection { background: var(--accent); color: var(--accent-on); }
+
+/* ==========================================================================
+   Топбар
+   ========================================================================== */
+.topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: sticky; top: 0; z-index: 50;
+}
+.brand {
+    display: flex; align-items: center; gap: 12px;
+    color: var(--text);
+}
+.brand:hover { text-decoration: none; }
+.brand-logo {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--sber-green) 0%, var(--sber-arctic) 100%);
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 18px;
+    box-shadow: 0 2px 8px rgba(33, 161, 154, .25);
+}
+.brand-text-main {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 17px;
+    line-height: 1.1;
+    letter-spacing: -.01em;
+}
+.brand-text-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.nav {
+    display: flex; gap: 4px;
+    margin: 0 auto;
+    background: var(--bg);
+    padding: 4px;
+    border-radius: 11px;
+    border: 1px solid var(--border);
+}
+.nav-link {
+    padding: 9px 18px;
+    border-radius: 8px;
+    color: var(--text-soft);
+    font-size: 14px;
+    font-weight: 500;
+    display: flex; align-items: center; gap: 7px;
+    transition: background .15s, color .15s;
+}
+.nav-link:hover { color: var(--text); text-decoration: none; }
+.nav-link.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+}
+
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-soft);
+    font-size: 16px;
+    transition: border-color .15s, color .15s, background .15s;
+    font-family: inherit;
+}
+.icon-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    text-decoration: none;
+}
+.icon-btn.icon-btn-avatar {
+    background: var(--accent-soft);
+    border-color: var(--accent-soft);
+    color: var(--accent-hover);
+}
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
+.page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 40px 28px 60px;
+}
+
+/* Hero (стиль «Мудреца» — крупный display + мелкая категория) */
+.hero { margin-bottom: 32px; }
+.hero-eyebrow {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent-hover);
+    margin: 0 0 12px;
+}
+.hero-title {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: clamp(32px, 4vw, 44px);
+    line-height: 1.08;
+    letter-spacing: -.02em;
+    margin: 0 0 10px;
+    color: var(--text);
+}
+.hero-sub {
+    color: var(--text-soft);
+    font-size: 15px;
+    margin: 0;
+    max-width: 640px;
+}
+
+/* Split */
+.split {
+    display: grid;
+    grid-template-columns: minmax(380px, 1fr) 1.25fr;
+    gap: 24px;
+}
+@media (max-width: 980px) { .split { grid-template-columns: 1fr; } }
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    box-shadow: var(--shadow-sm);
+}
+.card-title {
+    margin: 0 0 22px;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+}
+
+/* ==========================================================================
+   Формы
+   ========================================================================== */
+.field { margin-bottom: 16px; }
+.field:last-child { margin-bottom: 0; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.input, .select {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+    font-family: inherit;
+}
+.input:focus, .select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(33, 161, 154, .18);
+}
+body.theme-dark .input:focus,
+body.theme-dark .select:focus {
+    box-shadow: 0 0 0 3px rgba(66, 227, 180, .22);
+}
+.select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238a96a3' d='M6 8 0 0h12z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 38px;
+    cursor: pointer;
+}
+body.theme-dark .select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%237d8893' d='M6 8 0 0h12z'/></svg>");
+}
+
+.checkbox-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    user-select: none;
+    transition: border-color .15s, background .15s;
+}
+.checkbox-row:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-2);
+}
+.checkbox-row input {
+    width: 18px; height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+.checkbox-row span { font-size: 14px; color: var(--text); }
+
+.errorlist {
+    color: var(--danger);
+    font-size: 12px;
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0;
+}
+
+.btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 20px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .15s;
+    font-family: inherit;
+}
+.btn:hover {
+    border-color: var(--accent);
+    color: var(--accent-hover);
+}
+.btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-on);
+    width: 100%;
+    padding: 14px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 8px;
+    box-shadow: 0 2px 8px rgba(33, 161, 154, .2);
+}
+.btn-primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    color: var(--accent-on);
+    text-decoration: none;
+}
+
+/* ==========================================================================
+   Алерты
+   ========================================================================== */
+.alert {
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+.alert-error {
+    background: rgba(231, 76, 60, .1);
+    border: 1px solid rgba(231, 76, 60, .3);
+    color: var(--danger);
+}
+
+/* ==========================================================================
+   Результаты — стиль «Визуализация данных»
+   ========================================================================== */
+.result-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 440px;
+    text-align: center;
+    color: var(--text-muted);
+    gap: 14px;
+}
+.result-empty-icon {
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    background: var(--surface-soft);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 38px;
+    color: var(--accent-hover);
+}
+.result-empty-title {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--text);
+    margin: 0;
+    letter-spacing: -.01em;
+}
+.result-empty-sub { font-size: 13px; margin: 0; max-width: 280px; }
+
+.result-section { margin-bottom: 24px; }
+.result-section:last-child { margin-bottom: 0; }
+.result-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin: 0 0 12px;
+}
+
+.result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.result-grid-3 { grid-template-columns: repeat(3, 1fr); }
+
+.result-item {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+}
+.result-item-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-weight: 500;
+}
+.result-item-value {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
+}
+.result-item-value .suffix {
+    font-family: var(--font-text);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-left: 4px;
+    letter-spacing: 0;
+}
+
+/* Hero-карточка результата */
+.result-hero {
+    background: linear-gradient(135deg, var(--sber-green) 0%, var(--sber-green-deep) 100%);
+    color: #fff;
+    border-radius: var(--radius);
+    padding: 24px 26px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+}
+.result-hero::after {
+    content: "";
+    position: absolute;
+    right: -40px; top: -40px;
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(66, 227, 180, .35) 0%, transparent 70%);
+    pointer-events: none;
+}
+.result-hero-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    opacity: .85;
+    margin: 0 0 8px;
+}
+.result-hero-value {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 3.5vw, 40px);
+    font-weight: 400;
+    line-height: 1.05;
+    margin: 0;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+}
+.result-hero-value .suffix {
+    font-family: var(--font-text);
+    font-size: 15px;
+    font-weight: 500;
+    opacity: .85;
+    margin-left: 6px;
+    letter-spacing: 0;
+}
+.result-hero-meta {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, .18);
+    display: flex; gap: 28px;
+    font-size: 13px;
+    opacity: .9;
+}
+.result-hero-meta b {
+    font-weight: 600;
+    display: block;
+    font-size: 14px;
+    margin-top: 2px;
+}
+
+/* ==========================================================================
+   Placeholder (история)
+   ========================================================================== */
+.placeholder {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 80px 28px;
+    text-align: center;
+    color: var(--text-muted);
+}
+.placeholder-icon {
+    width: 96px; height: 96px;
+    margin: 0 auto 20px;
+    border-radius: 50%;
+    background: var(--surface-soft);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 38px;
+    color: var(--accent-hover);
+}
+.placeholder-title {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--text);
+    margin: 0 0 8px;
+    letter-spacing: -.01em;
+}
+.placeholder-sub { font-size: 14px; margin: 0; line-height: 1.6; }
+
+/* ==========================================================================
+   Tom Select — темизация под общий дизайн
+   ========================================================================== */
+
+/* Контейнер «кнопки» (свёрнутого селекта) */
+.ts-wrapper.single .ts-control,
+.ts-wrapper.multi .ts-control {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    min-height: 44px;
+    font-family: var(--font-text);
+    font-size: 15px;
+    color: var(--text);
+    box-shadow: none;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ts-wrapper.single.focus .ts-control,
+.ts-wrapper.multi.focus .ts-control {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    outline: none;
+}
+.ts-wrapper.single .ts-control > input,
+.ts-wrapper.multi .ts-control > input {
+    color: var(--text);
+    font-family: inherit;
+    font-size: inherit;
+}
+.ts-wrapper.single .ts-control > input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Стрелка справа */
+.ts-wrapper.single .ts-control::after {
+    border-color: var(--text-muted) transparent transparent transparent;
+}
+.ts-wrapper.single.dropdown-active .ts-control::after {
+    border-color: transparent transparent var(--text-muted) transparent;
+}
+
+/* Выпадающее меню */
+.ts-dropdown {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .12);
+    margin-top: 6px;
+    padding: 6px;
+    z-index: 1000;
+}
+.ts-dropdown .option {
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--text);
+    cursor: pointer;
+}
+.ts-dropdown .option:hover,
+.ts-dropdown .active {
+    background: var(--surface-soft);
+    color: var(--text);
+}
+.ts-dropdown .option.selected,
+.ts-dropdown .active.selected {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 500;
+}
+.ts-dropdown .no-results {
+    padding: 12px;
+    color: var(--text-muted);
+    font-size: 14px;
+    text-align: center;
+}
+
+/* Строка поиска внутри dropdown */
+.ts-dropdown .dropdown-input-wrap {
+    padding: 6px 6px 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 6px;
+}
+.ts-dropdown input.dropdown-input {
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-family: var(--font-text);
+    color: var(--text);
+    width: 100%;
+}
+.ts-dropdown input.dropdown-input:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+/* Состояние disabled */
+.ts-wrapper.disabled .ts-control {
+    background: var(--surface-soft);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: .7;
+}
+
+
+/* ==========================================================================
+   Таблица статей расходов
+   ========================================================================== */
+.cost-items-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.cost-items-table th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 0 12px 10px;
+    border-bottom: 1px solid var(--border);
+}
+.cost-items-table th.num,
+.cost-items-table td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.cost-items-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+}
+.cost-items-table .code {
+    color: var(--accent-hover);
+    font-weight: 500;
+    white-space: nowrap;
+}
+.cost-items-table .name { line-height: 1.4; }
+
+/* Агрегат «Σ сумма» */
+.cost-item-sum .name,
+.cost-item-sum .code { font-weight: 600; color: var(--text); }
+
+/* Подстатья — отступ */
+.cost-item-child .code { padding-left: 18px; }
+.cost-item-child .name { color: var(--text-soft); }
+
+/* Итого */
+.cost-item-total td {
+    border-bottom: none;
+    border-top: 2px solid var(--border-strong);
+    padding-top: 13px;
+    font-weight: 600;
+    font-size: 14px;
+}
+.cost-item-total.cost-item-over .num { color: var(--danger); }
+
+.cost-items-warning {
+    margin: 10px 0 0;
+    font-size: 12px;
+    color: var(--danger);
+    font-weight: 500;
+}
+
+.accordion-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+}
+.accordion-summary::-webkit-details-marker { display: none; }
+.accordion-summary::after {
+    content: "▾";
+    transition: transform .2s ease;
+    font-size: .85em;
+    opacity: .6;
+}
+.accordion[open] .accordion-summary::after { transform: rotate(180deg); }
+.accordion-meta {
+    font-weight: 600;
+    opacity: .7;
+    margin-left: auto;
+}
+
+/* ==========================================================================
+   Утилиты
+   ========================================================================== */
+.hidden { display: none !important; }
 ```

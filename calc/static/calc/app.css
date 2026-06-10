@@ -726,27 +726,91 @@ body.theme-dark .select {
     font-weight: 500;
 }
 
+/* ==========================================================================
+   Аккордеон
+   ========================================================================== */
+.accordion {
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
+}
+.accordion:hover { border-color: var(--accent); }
+.accordion[open] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .accordion-summary {
     cursor: pointer;
     list-style: none;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: .5rem;
+    gap: 14px;
+    padding: 14px 16px;
+    margin: 0;
+    user-select: none;
+    transition: background .15s;
 }
+.accordion-summary:hover { background: var(--surface-soft); }
 .accordion-summary::-webkit-details-marker { display: none; }
-.accordion-summary::after {
-    content: "▾";
-    transition: transform .2s ease;
-    font-size: .85em;
-    opacity: .6;
+
+/* Заголовок + подсказка слева */
+.accordion-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
 }
-.accordion[open] .accordion-summary::after { transform: rotate(180deg); }
-.accordion-meta {
+.accordion-title {
+    font-size: 13px;
     font-weight: 600;
-    opacity: .7;
-    margin-left: auto;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: 0;
 }
+.accordion-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+/* Сумма */
+.accordion-meta {
+    margin-left: auto;
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Шеврон в кружке-кнопке */
+.accordion-chevron {
+    flex: 0 0 auto;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-soft);
+    font-size: 12px;
+    transition: transform .2s ease, background .15s, color .15s, border-color .15s;
+}
+.accordion-summary:hover .accordion-chevron {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-on);
+}
+.accordion[open] .accordion-chevron { transform: rotate(180deg); }
+
+/* Тело — отступы, отделение от шапки */
+.accordion[open] .accordion-summary { border-bottom: 1px solid var(--border); }
+.accordion .cost-items-table { padding: 4px 16px 14px; }
+.accordion[open] .cost-items-table { display: table; margin-top: 8px; }
+
 
 /* ==========================================================================
    Утилиты
