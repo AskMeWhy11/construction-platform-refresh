@@ -146,33 +146,34 @@
         {# Инфляционное удорожание #}
         {% if result.inflation_rows %}
         <div class="result-section">
-            <h3 class="result-section-title">Инфляционное удорожание</h3>
-            <table class="cost-items-table">
-                <thead>
-                    <tr>
-                        <th class="num">Месяц</th>
-                        <th class="num">Инфляция</th>
-                        <th class="num">Затраты/мес, ₽</th>
-                        <th class="num">Удорожание, ₽</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in result.inflation_rows %}
-                    <tr class="cost-item-row">
-                        <td class="num">{{ r.month }}</td>
-                        <td class="num">{{ r.rate|floatformat:4 }}</td>
-                        <td class="num">{{ r.spend|spaces }}</td>
-                        <td class="num">{{ r.amount|spaces }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr class="cost-item-total">
-                        <td class="num" colspan="3">Итого удорожание</td>
-                        <td class="num">{{ result.inflation_amount|spaces }}</td>
-                    </tr>
-                </tfoot>
-            </table>
+            <details class="accordion">
+                <summary class="result-section-title accordion-summary">
+                    Инфляционное удорожание
+                    <span class="accordion-meta">{{ result.inflation_amount|spaces }} ₽</span>
+                </summary>
+                <table class="cost-items-table">
+                    <thead>
+                        <tr>
+                            <th class="num">Затраты/мес, ₽</th>
+                            <th class="num">Удорожание, ₽</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in result.inflation_rows %}
+                        <tr class="cost-item-row">
+                            <td class="num">{{ r.spend|spaces }}</td>
+                            <td class="num">{{ r.amount|spaces }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="cost-item-total">
+                            <td class="num">Итого удорожание</td>
+                            <td class="num">{{ result.inflation_amount|spaces }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </details>
         </div>
         {% endif %}
 
