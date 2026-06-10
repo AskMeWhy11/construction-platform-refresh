@@ -8,7 +8,6 @@ from .services import CalcError, calculate
 
 
 def index(request):
-    # ... без изменений
     result = None
     error = None
     if request.method == "POST":
@@ -23,6 +22,7 @@ def index(request):
                     floors=cd["floors"],
                     total_area=cd["total_area"],
                     underground_parking=cd.get("underground_parking", False),
+                    ground_parking_spaces=cd.get("ground_parking_spaces") or 0,
                     start_date=cd["start_date"],
                 )
             except CalcError as e:
