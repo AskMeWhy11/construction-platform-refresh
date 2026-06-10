@@ -94,14 +94,19 @@ def _start_month(start_date: date, today: date | None = None) -> int:
 
 
 def compute_inflation_increase(base_cost: Decimal, duration_months: int, start_date: date):
-    """Этапы 1–3 инфляционного удорожания. Возвращает (rows, total)."""
+    """Этапы 1–3 инфляционного удорожания. Возвращает (rows, total).
+
+    Длительность частей: 1-я и 2-я = months_in_period (округление срока/3),
+    3-я = остаток (duration - 2*months_in_period), чтобы суммарное число
+    периодов точно совпадало со сроком строительства.
+    """
     rows: list[dict] = []
     if not duration_months or duration_months < 1:
         return rows, Decimal("0.00")
 
     start = _start_month(start_date)
 
-    # Этап 2: месяцев в периоде (мат. округление)
+    # Базовая длина части (мат. округление срока / 3)
     months_in_period = int(
         (Decimal(duration_months) / Decimal("3")).quantize(
             Decimal("1"), rounding=ROUND_HALF_UP
@@ -110,10 +115,17 @@ def compute_inflation_increase(base_cost: Decimal, duration_months: int, start_d
     if months_in_period < 1:
         months_in_period = 1
 
-    # 3 части по долям, затраты на месяц внутри части
+    # Длина последней части = остаток, чтобы Σ периодов == duration_months
+    last_period_months = duration_months - 2 * months_in_period
+    if last_period_months < 1:
+        last_period_months = 1
+
+    period_lengths = [months_in_period, months_in_period, last_period_months]
+
+    # 3 части по долям; затраты на месяц = доля стоимости / длину СВОЕЙ части
     parts = [Decimal("0.30"), Decimal("0.40"), Decimal("0.30")]
     per_month = [
-        (base_cost * p / Decimal(months_in_period)) for p in parts
+        base_cost * parts[i] / Decimal(period_lengths[i]) for i in range(3)
     ]
 
     # Помесячная инфляция → словарь (с клампом к максимальному месяцу)
@@ -126,7 +138,7 @@ def compute_inflation_increase(base_cost: Decimal, duration_months: int, start_d
     cur_month = start
     for period_idx in range(3):
         spend = per_month[period_idx]
-        for _ in range(months_in_period):
+        for _ in range(period_lengths[period_idx]):
             rate = table.get(cur_month) or table[max_month]
             amount = spend * rate
             rows.append({
