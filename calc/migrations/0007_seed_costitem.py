@@ -37,5 +37,5 @@ def unseed(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("calc", "000X_costitem")]  # заменить на имя файла выше
+    dependencies = [("calc", "0006_costitem")]  # заменить на имя файла выше
     operations = [migrations.RunPython(seed, unseed)]
