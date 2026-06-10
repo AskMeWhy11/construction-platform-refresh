@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 from datetime import date
-from decimal import Decimal, ROUND_CEILING
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from math import ceil
 
 DEFAULT_SQM_PER_RESIDENT = Decimal("30.00")
