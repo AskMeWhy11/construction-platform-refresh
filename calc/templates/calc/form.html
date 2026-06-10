@@ -57,6 +57,12 @@
         </div>
 
         <div class="field">
+            <label class="label" for="{{ form.start_date.id_for_label }}">{{ form.start_date.label }}</label>
+            {{ form.start_date }}
+            {{ form.start_date.errors }}
+        </div>
+
+        <div class="field">
             <label class="checkbox-row">
                 {{ form.underground_parking }}
                 <span>{{ form.underground_parking.label }}</span>
@@ -137,20 +143,38 @@
             </div>
         </div>
 
-        {# Коэффициенты #}
+        {# Инфляционное удорожание #}
+        {% if result.inflation_rows %}
         <div class="result-section">
-            <h3 class="result-section-title">Коэффициенты</h3>
-            <div class="result-grid">
-                <div class="result-item">
-                    <div class="result-item-label">Очистка от инфляции</div>
-                    <div class="result-item-value">{{ result.clean_coef|floatformat:3 }}</div>
-                </div>
-                <div class="result-item">
-                    <div class="result-item-label">Ставка инфляции</div>
-                    <div class="result-item-value">{{ result.inflation_rate|floatformat:4 }}</div>
-                </div>
-            </div>
+            <h3 class="result-section-title">Инфляционное удорожание</h3>
+            <table class="cost-items-table">
+                <thead>
+                    <tr>
+                        <th class="num">Месяц</th>
+                        <th class="num">Инфляция</th>
+                        <th class="num">Затраты/мес, ₽</th>
+                        <th class="num">Удорожание, ₽</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in result.inflation_rows %}
+                    <tr class="cost-item-row">
+                        <td class="num">{{ r.month }}</td>
+                        <td class="num">{{ r.rate|floatformat:4 }}</td>
+                        <td class="num">{{ r.spend|spaces }}</td>
+                        <td class="num">{{ r.amount|spaces }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="cost-item-total">
+                        <td class="num" colspan="3">Итого удорожание</td>
+                        <td class="num">{{ result.inflation_amount|spaces }}</td>
+                    </tr>
+                </tfoot>
+            </table>
         </div>
+        {% endif %}
 
         {# Соцобъекты #}
         {% if result.doo_seats or result.sosh_seats %}

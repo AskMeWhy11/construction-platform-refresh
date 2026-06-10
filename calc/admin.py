@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
+from .models import MonthlyInflation
 
 from . import views_admin
 from .models import (
@@ -23,6 +24,11 @@ class CityAdmin(admin.ModelAdmin):
     list_display = ("name",)
     search_fields = ("name",)
 
+@admin.register(MonthlyInflation)
+class MonthlyInflationAdmin(admin.ModelAdmin):
+    list_display = ("month", "rate")
+    list_editable = ("rate",)
+    ordering = ("month",)
 
 @admin.register(BuildingPurpose)
 class BuildingPurposeAdmin(admin.ModelAdmin):
