@@ -206,3 +206,19 @@ class CostItem(models.Model):
     def counts_in_total(self) -> bool:
         """В ИТОГО входят только обычные статьи и подстатьи (не агрегат-сумма)."""
         return self.item_type in (self.TYPE_ARTICLE, self.TYPE_SUBARTICLE)
+
+class MonthlyInflation(models.Model):
+    """Помесячная таблица инфляции для расчёта инфляционного удорожания."""
+    month = models.PositiveSmallIntegerField("Месяц", unique=True)
+    rate = models.DecimalField(
+        "Инфляция", max_digits=6, decimal_places=4,
+        help_text="Доля, например 0.0806 = 8.06%",
+    )
+
+    class Meta:
+        verbose_name = "Помесячная инфляция"
+        verbose_name_plural = "Инфляция (помесячно)"
+        ordering = ["month"]
+
+    def __str__(self):
+        return f"мес. {self.month}: {self.rate}"
