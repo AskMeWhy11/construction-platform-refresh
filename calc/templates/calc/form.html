@@ -279,39 +279,48 @@
         {# Статьи расходов на строительство #}
         {% if result.cost_items %}
         <div class="result-section">
-            <h3 class="result-section-title">Статьи расходов на строительство</h3>
-            <table class="cost-items-table">
-                <thead>
-                    <tr>
-                        <th>Код</th>
-                        <th>Наименование</th>
-                        <th class="num">% от базы</th>
-                        <th class="num">Сумма, ₽</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for ci in result.cost_items %}
-                    <tr
-                        class="cost-item-row cost-item-{{ ci.item_type }}{% if ci.is_child %} cost-item-child{% endif %}">
-                        <td class="code">{{ ci.code }}</td>
-                        <td class="name">{{ ci.name }}</td>
-                        <td class="num">{{ ci.percent|floatformat:2 }}%</td>
-                        <td class="num">{{ ci.amount|spaces }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr class="cost-item-total{% if result.cost_items_total_percent > 100 %} cost-item-over{% endif %}">
-                        <td></td>
-                        <td>ИТОГО</td>
-                        <td class="num">{{ result.cost_items_total_percent|floatformat:2 }}%</td>
-                        <td class="num">{{ result.cost_items_total_amount|spaces }}</td>
-                    </tr>
-                </tfoot>
-            </table>
-            {% if result.cost_items_total_percent > 100 %}
-            <p class="cost-items-warning">⚠ Сумма процентов превышает 100%</p>
-            {% endif %}
+            <details class="accordion">
+                <summary class="accordion-summary">
+                    <span class="accordion-head">
+                        <span class="accordion-title">Статьи расходов на строительство</span>
+                        <span class="accordion-hint">Детализация по статьям · нажмите, чтобы развернуть</span>
+                    </span>
+                    <span class="accordion-meta">{{ result.cost_items_total_amount|spaces }} ₽</span>
+                    <span class="accordion-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <table class="cost-items-table">
+                    <thead>
+                        <tr>
+                            <th>Код</th>
+                            <th>Наименование</th>
+                            <th class="num">% от базы</th>
+                            <th class="num">Сумма, ₽</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ci in result.cost_items %}
+                        <tr
+                            class="cost-item-row cost-item-{{ ci.item_type }}{% if ci.is_child %} cost-item-child{% endif %}">
+                            <td class="code">{{ ci.code }}</td>
+                            <td class="name">{{ ci.name }}</td>
+                            <td class="num">{{ ci.percent|floatformat:2 }}%</td>
+                            <td class="num">{{ ci.amount|spaces }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="cost-item-total{% if result.cost_items_total_percent > 100 %} cost-item-over{% endif %}">
+                            <td></td>
+                            <td>ИТОГО</td>
+                            <td class="num">{{ result.cost_items_total_percent|floatformat:2 }}%</td>
+                            <td class="num">{{ result.cost_items_total_amount|spaces }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% if result.cost_items_total_percent > 100 %}
+                <p class="cost-items-warning">⚠ Сумма процентов превышает 100%</p>
+                {% endif %}
+            </details>
         </div>
         {% endif %}
 

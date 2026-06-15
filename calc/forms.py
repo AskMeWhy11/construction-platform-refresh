@@ -26,6 +26,7 @@ class CalcForm(forms.Form):
     start_date = forms.DateField(
         label="Дата начала строительства",
         widget=forms.DateInput(attrs={"type": "date"}),
+        initial=date.today,
     )
     underground_parking = forms.BooleanField(label="Подземный паркинг", required=False)
     ground_parking = forms.BooleanField(label="Наземный отдельностоящий паркинг", required=False)
