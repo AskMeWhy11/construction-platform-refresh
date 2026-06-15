@@ -7,6 +7,14 @@ DEFAULT_SQM_PER_RESIDENT = Decimal("30.00")
 DEFAULT_DOO_PER_1000 = Decimal("65.00")
 DEFAULT_SOSH_PER_1000 = Decimal("135.00")
 
+FINISH_TYPE_WB = "wb"
+FINISH_TYPE_ROUGH = "rough"
+FINISH_TYPE_FINE = "fine"
+FINISH_TYPE_DESIGNER = "designer"
+
+FLOOR_MULT_THRESHOLD = 30
+FLOOR_MULT = Decimal("1.25")
+
 from .models import (
     BuildingClass,
     BuildingPurpose,
@@ -35,6 +43,7 @@ class CalcResult:
     clean_coef: Decimal
     total_area: Decimal
     apartments_area: Decimal
+    apartments_area_label: str
     residents: int
     underground_parking: bool
     ground_parking_spaces: int
@@ -44,17 +53,17 @@ class CalcResult:
     sosh_seats: int
     sosh_cost: Decimal
     price_per_sqm: Decimal
+    floor_multiplier: Decimal
+    finish_enabled: bool
+    finish_type: str
+    finish_rate: Decimal
+    finish_cost: Decimal
 
     def as_dict(self):
         return asdict(self)
 
 
 def _interpolate_duration(total_area: Decimal) -> int | None:
-    """Линейная интерполяция срока строительства по таблице ConstructionDuration.
-
-    Возвращает срок (мес., целое, округление к ближайшему). Если точек < 2 —
-    возвращает None (срок не определён).
-    """
     points = list(
         ConstructionDuration.objects.order_by("area").values_list("area", "months")
     )
@@ -79,11 +88,6 @@ def _interpolate_duration(total_area: Decimal) -> int | None:
 
 
 def _start_month(start_date: date, today: date | None = None) -> int:
-    """Точка старта в таблице инфляции.
-
-    Расстояние в месяцах от сегодня до start_date (вверх), затем +1.
-    01.01.2025 → 25.05.2025: 4 календ. мес + (день 25>1 → +1) = 5; старт = 6.
-    """
     today = today or date.today()
     months = (start_date.year - today.year) * 12 + (start_date.month - today.month)
     if start_date.day > today.day:
@@ -94,19 +98,12 @@ def _start_month(start_date: date, today: date | None = None) -> int:
 
 
 def compute_inflation_increase(base_cost: Decimal, duration_months: int, start_date: date):
-    """Этапы 1–3 инфляционного удорожания. Возвращает (rows, total).
-
-    Длительность частей: 1-я и 2-я = months_in_period (округление срока/3),
-    3-я = остаток (duration - 2*months_in_period), чтобы суммарное число
-    периодов точно совпадало со сроком строительства.
-    """
     rows: list[dict] = []
     if not duration_months or duration_months < 1:
         return rows, Decimal("0.00")
 
     start = _start_month(start_date)
 
-    # Базовая длина части (мат. округление срока / 3)
     months_in_period = int(
         (Decimal(duration_months) / Decimal("3")).quantize(
             Decimal("1"), rounding=ROUND_HALF_UP
@@ -115,20 +112,17 @@ def compute_inflation_increase(base_cost: Decimal, duration_months: int, start_d
     if months_in_period < 1:
         months_in_period = 1
 
-    # Длина последней части = остаток, чтобы Σ периодов == duration_months
     last_period_months = duration_months - 2 * months_in_period
     if last_period_months < 1:
         last_period_months = 1
 
     period_lengths = [months_in_period, months_in_period, last_period_months]
 
-    # 3 части по долям; затраты на месяц = доля стоимости / длину СВОЕЙ части
     parts = [Decimal("0.30"), Decimal("0.40"), Decimal("0.30")]
     per_month = [
         base_cost * parts[i] / Decimal(period_lengths[i]) for i in range(3)
     ]
 
-    # Помесячная инфляция → словарь (с клампом к максимальному месяцу)
     table = dict(MonthlyInflation.objects.values_list("month", "rate"))
     if not table:
         return rows, Decimal("0.00")
@@ -152,6 +146,42 @@ def compute_inflation_increase(base_cost: Decimal, duration_months: int, start_d
 
     return rows, total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
+
+def _finish_rate(*, city, purpose, finish_type, finish_custom_rate, settings) -> Decimal:
+    """₽/м² отделки по типу и категории. Дизайнерская — ввод пользователя;
+    остальное: город → дефолт настроек → 0."""
+    if finish_type == FINISH_TYPE_DESIGNER:
+        return finish_custom_rate or Decimal("0")
+
+    is_hotel = purpose.category == BuildingPurpose.CAT_HOTEL
+    suffix = "hotel" if is_hotel else "res"
+    key = {
+        FINISH_TYPE_WB: "wb",
+        FINISH_TYPE_ROUGH: "rough",
+        FINISH_TYPE_FINE: "fine",
+    }.get(finish_type)
+    if not key:
+        return Decimal("0")
+
+    val = getattr(city, f"finish_{key}_{suffix}", None)
+    if val is not None:
+        return val
+    if settings is not None:
+        return getattr(settings, f"default_finish_{key}_{suffix}", None) or Decimal("0")
+    return Decimal("0")
+
+
+def _social_price_per_sqm(city) -> Decimal:
+    """Себестоимость м² социального объекта (класс is_social) для города."""
+    rate = (
+        CostRate.objects
+        .filter(city=city, building_class__is_social=True)
+        .order_by("building_class__order")
+        .first()
+    )
+    return rate.price_per_sqm if rate else Decimal("0")
+
+
 def calculate(
     *,
     city: City,
@@ -162,8 +192,11 @@ def calculate(
     underground_parking: bool,
     ground_parking_spaces: int,
     start_date: date,
+    finish_enabled: bool = False,
+    finish_type: str = FINISH_TYPE_WB,
+    finish_custom_rate: Decimal | None = None,
 ) -> dict:
-    # 1. Срок — единая таблица (area → months), линейная интерполяция
+    # 1. Срок
     duration_months = _interpolate_duration(total_area)
 
     # 2. Стоимость строительства
@@ -171,21 +204,48 @@ def calculate(
     price_per_sqm = rate.price_per_sqm if rate else Decimal("0")
 
     settings = Settings.objects.filter(is_active=True).first()
-    base_cost = (total_area * price_per_sqm).quantize(Decimal("0.01"))
 
-    # Инфляционное удорожание (помесячный метод)
+    # 2.1. Площадь квартир / номерного фонда
+    apartments_area = (total_area * purpose.apartments_area_ratio).quantize(
+        Decimal("0.01")
+    )
+    rest_area = total_area - apartments_area
+    apartments_area_label = (
+        "Площадь номерного фонда" if purpose.is_hotel else "Площадь квартир"
+    )
+
+    # 2.2. Множитель этажности (≥30 этажей → 1.25 на rest-площадь)
+    floor_multiplier = FLOOR_MULT if floors >= FLOOR_MULT_THRESHOLD else Decimal("1")
+
+    # 2.3. Отделка (только Ж/Г)
+    finish_enabled = bool(finish_enabled and purpose.finish_enabled)
+    if finish_enabled:
+        finish_rate = _finish_rate(
+            city=city, purpose=purpose, finish_type=finish_type,
+            finish_custom_rate=finish_custom_rate, settings=settings,
+        )
+    else:
+        finish_rate = Decimal("0")
+
+    # 2.4. База: rest × price × floor_mult + квартиры × (price + finish_rate)
+    base_rest = (rest_area * price_per_sqm * floor_multiplier)
+    apt_unit = price_per_sqm + finish_rate
+    base_apt = (apartments_area * apt_unit)
+    finish_cost = (apartments_area * finish_rate).quantize(Decimal("0.01"))
+    base_cost = (base_rest + base_apt).quantize(Decimal("0.01"))
+
+    # Инфляция
     inflation_rows, inflation_amount = compute_inflation_increase(
         base_cost, duration_months or 0, start_date
     )
     construction_cost = (base_cost + inflation_amount).quantize(Decimal("0.01"))
 
-    # 3. Площадь квартир
-    apartments_area = (total_area * purpose.apartments_area_ratio).quantize(
-        Decimal("0.01")
+    inflation_rate = (
+        (inflation_amount / base_cost) if base_cost else Decimal("0")
     )
+    clean_coef = settings.inflation_clean_coef if settings else Decimal("0.900")
 
     # 4. Социалка
-    # 4.1. Число жителей (норма — переопределение города → дефолт настроек → константа)
     sqm_per_resident = (
         city.sqm_per_resident
         or (settings.default_sqm_per_resident if settings else None)
@@ -196,7 +256,6 @@ def calculate(
     else:
         residents = 0
 
-    # 4.2. Нормативы мест на 1000 жителей (город → дефолт настроек → константа)
     doo_per_1000 = (
         city.doo_per_1000
         or (settings.default_doo_per_1000 if settings else None)
@@ -208,17 +267,19 @@ def calculate(
         or DEFAULT_SOSH_PER_1000
     )
 
-    # 4.3. Места и стоимость (стоимость места — из активного норматива)
+    # 4.3. Места и стоимость: seats × sqm_per_seat × себестоимость соц-класса
     norms = SocialNorms.objects.filter(is_active=True).first()
     doo_seats = ceil(Decimal(residents) * Decimal("0.001") * doo_per_1000)
     sosh_seats = ceil(Decimal(residents) * Decimal("0.001") * sosh_per_1000)
-    if norms:
-        doo_cost = (Decimal(doo_seats) * norms.cost_per_doo_seat).quantize(
-            Decimal("0.01")
-        )
-        sosh_cost = (Decimal(sosh_seats) * norms.cost_per_school_seat).quantize(
-            Decimal("0.01")
-        )
+
+    social_price = _social_price_per_sqm(city)
+    if norms and social_price > 0:
+        doo_cost = (
+            Decimal(doo_seats) * norms.sqm_per_doo_seat * social_price
+        ).quantize(Decimal("0.01"))
+        sosh_cost = (
+            Decimal(sosh_seats) * norms.sqm_per_school_seat * social_price
+        ).quantize(Decimal("0.01"))
     else:
         doo_cost = sosh_cost = Decimal("0.00")
 
@@ -229,13 +290,12 @@ def calculate(
         Decimal("0.01")
     )
 
-    # 6. Распределение по статьям расходов (база — стоимость строительства)
+    # 6. Статьи расходов
     cost_items = []
     cost_items_total_percent = Decimal("0")
     cost_items_total_amount = Decimal("0")
     items = CostItem.objects.filter(is_active=True).order_by("order", "code")
     for item in items:
-        # сумма по статье: база × % / 100, округление ВВЕРХ до копейки
         amount = (construction_cost * item.percent / Decimal("100")).quantize(
             Decimal("0.01"), rounding=ROUND_CEILING
         )
@@ -249,7 +309,6 @@ def calculate(
                 "is_child": item.parent_id is not None,
             }
         )
-        # в ИТОГО — только обычные статьи и подстатьи (агрегат-сумма не учитывается)
         if item.item_type in (CostItem.TYPE_ARTICLE, CostItem.TYPE_SUBARTICLE):
             cost_items_total_percent += item.percent
             cost_items_total_amount += amount
@@ -261,9 +320,12 @@ def calculate(
         "start_date": start_date,
         "base_cost": base_cost,
         "inflation_amount": inflation_amount,
+        "inflation_rate": inflation_rate,
+        "clean_coef": clean_coef,
         "construction_cost": construction_cost,
         "total_area": total_area,
         "apartments_area": apartments_area,
+        "apartments_area_label": apartments_area_label,
         "residents": residents,
         "doo_seats": doo_seats,
         "doo_cost": doo_cost,
@@ -272,6 +334,11 @@ def calculate(
         "underground_parking": underground_parking,
         "ground_parking_spaces": ground_parking_spaces,
         "ground_parking_cost": ground_parking_cost,
+        "floor_multiplier": floor_multiplier,
+        "finish_enabled": finish_enabled,
+        "finish_type": finish_type,
+        "finish_rate": finish_rate,
+        "finish_cost": finish_cost,
         "cost_items": cost_items,
         "cost_items_total_percent": cost_items_total_percent,
         "cost_items_total_amount": cost_items_total_amount,

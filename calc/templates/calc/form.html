@@ -50,7 +50,7 @@
                 {{ form.floors.errors }}
             </div>
             <div class="field">
-                <label class="label" for="{{ form.total_area.id_for_label }}">{{ form.total_area.label }}</label>
+                <label class="label" for="{{ form.total_area.id_for_label }}" data-area-label>{{ form.total_area.label }}</label>
                 {{ form.total_area }}
                 {{ form.total_area.errors }}
             </div>
@@ -84,6 +84,36 @@
             </label>
             {{ form.ground_parking_spaces }}
             {{ form.ground_parking_spaces.errors }}
+        </div>
+                <div class="field {% if not form.ground_parking.value %}hidden{% endif %}" data-depends-on="ground_parking">
+            <label class="label" for="{{ form.ground_parking_spaces.id_for_label }}">
+                {{ form.ground_parking_spaces.label }}
+            </label>
+            {{ form.ground_parking_spaces }}
+            {{ form.ground_parking_spaces.errors }}
+        </div>
+
+        {# ── Отделка (только Ж/Г) ── #}
+        <div class="field hidden" data-finish-block>
+            <label class="checkbox-row">
+                {{ form.finish_enabled }}
+                <span>{{ form.finish_enabled.label }}</span>
+            </label>
+            {{ form.finish_enabled.errors }}
+        </div>
+
+        <div class="field hidden" data-finish-options>
+            <span class="label">{{ form.finish_type.label }}</span>
+            <div class="radio-group">{{ form.finish_type }}</div>
+            {{ form.finish_type.errors }}
+
+            <div class="field hidden" data-finish-custom>
+                <label class="label" for="{{ form.finish_custom_rate.id_for_label }}">
+                    {{ form.finish_custom_rate.label }}
+                </label>
+                {{ form.finish_custom_rate }}
+                {{ form.finish_custom_rate.errors }}
+            </div>
         </div>
 
         <button type="submit" class="btn btn-primary">Рассчитать проект</button>
@@ -135,13 +165,35 @@
                     </div>
                 </div>
                 <div class="result-item">
-                    <div class="result-item-label">Площадь квартир</div>
+                    <div class="result-item-label">{{ result.apartments_area_label }}</div>
                     <div class="result-item-value">
                         {{ result.apartments_area|spaces }}<span class="suffix">м²</span>
                     </div>
                 </div>
             </div>
         </div>
+
+        {% if result.finish_enabled or result.floor_multiplier > 1 %}
+        <div class="result-section">
+            <h3 class="result-section-title">Коэффициенты и отделка</h3>
+            <div class="result-grid">
+                {% if result.floor_multiplier > 1 %}
+                <div class="result-item">
+                    <div class="result-item-label">Множитель этажности (≥30 эт.)</div>
+                    <div class="result-item-value">×{{ result.floor_multiplier }}</div>
+                </div>
+                {% endif %}
+                {% if result.finish_enabled %}
+                <div class="result-item">
+                    <div class="result-item-label">Отделка · {{ result.finish_rate|spaces }} ₽/м²</div>
+                    <div class="result-item-value">
+                        {{ result.finish_cost|spaces }}<span class="suffix">₽</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
 
         {# Инфляционное удорожание #}
         {% if result.inflation_rows %}
@@ -182,11 +234,11 @@
         {% endif %}
 
         {# Соцобъекты #}
-        {% if result.doo_seats or result.sosh_seats %}
+        {% if result.doo_cost or result.sosh_cost %}
         <div class="result-section">
             <h3 class="result-section-title">Социальная инфраструктура</h3>
             <div class="result-grid">
-                {% if result.doo_seats %}
+                {% if result.doo_cost %}
                 <div class="result-item">
                     <div class="result-item-label">ДОО — мест</div>
                     <div class="result-item-value">
@@ -195,7 +247,7 @@
                     </div>
                 </div>
                 {% endif %}
-                {% if result.sosh_seats %}
+                {% if result.sosh_cost %}
                 <div class="result-item">
                     <div class="result-item-label">СОШ — мест</div>
                     <div class="result-item-value">

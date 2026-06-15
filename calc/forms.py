@@ -1,7 +1,20 @@
 from datetime import date
+from decimal import Decimal
 from django import forms
 
 from .models import BuildingClass, BuildingPurpose, City
+
+
+FINISH_TYPE_WB = "wb"
+FINISH_TYPE_ROUGH = "rough"
+FINISH_TYPE_FINE = "fine"
+FINISH_TYPE_DESIGNER = "designer"
+FINISH_TYPE_CHOICES = [
+    (FINISH_TYPE_WB, "White Box"),
+    (FINISH_TYPE_ROUGH, "Черновая"),
+    (FINISH_TYPE_FINE, "Чистовая"),
+    (FINISH_TYPE_DESIGNER, "Дизайнерская"),
+]
 
 
 class CalcForm(forms.Form):
@@ -19,6 +32,16 @@ class CalcForm(forms.Form):
     ground_parking_spaces = forms.IntegerField(
         label="Количество машиномест (наземный)", min_value=0, required=False, initial=0
     )
+    # ── Отделка ──
+    finish_enabled = forms.BooleanField(label="Учитывать отделку", required=False)
+    finish_type = forms.ChoiceField(
+        label="Тип отделки", choices=FINISH_TYPE_CHOICES,
+        widget=forms.RadioSelect, required=False, initial=FINISH_TYPE_WB,
+    )
+    finish_custom_rate = forms.DecimalField(
+        label="Стоимость дизайнерской отделки, ₽/м²",
+        min_value=0, max_digits=12, decimal_places=2, required=False,
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -27,7 +50,7 @@ class CalcForm(forms.Form):
             cls = field.widget.__class__.__name__
             if cls in ("Select", "NullBooleanSelect"):
                 field.widget.attrs.setdefault("class", "select")
-            elif cls == "CheckboxInput":
+            elif cls in ("CheckboxInput", "RadioSelect"):
                 pass
             else:
                 field.widget.attrs.setdefault("class", "input")
@@ -58,4 +81,37 @@ class CalcForm(forms.Form):
                 )
         if cleaned.get("ground_parking") and not cleaned.get("ground_parking_spaces"):
             self.add_error("ground_parking_spaces", "Укажите количество машиномест.")
+
+        # Отделка доступна только для Ж/Г
+        if cleaned.get("finish_enabled"):
+            if purpose and not purpose.finish_enabled:
+                self.add_error(
+                    "finish_enabled",
+                    "Отделка доступна только для жилых и гостиничных объектов.",
+                )
+                cleaned["finish_enabled"] = False
+            else:
+                ftype = cleaned.get("finish_type")
+                if not ftype:
+                    self.add_error("finish_type", "Выберите тип отделки.")
+                elif ftype == FINISH_TYPE_DESIGNER and not cleaned.get("finish_custom_rate"):
+                    self.add_error(
+                        "finish_custom_rate",
+                        "Укажите стоимость дизайнерской отделки.",
+                    )
         return cleaned
+
+class PurposeSelect(forms.Select):
+    """Select с data-category на каждом option (для JS-динамики отделки/лейбла)."""
+
+    def __init__(self, *args, **kwargs):
+        self._category_map = kwargs.pop("category_map", {})
+        super().__init__(*args, **kwargs)
+
+    def create_option(self, name, value, *args, **kwargs):
+        option = super().create_option(name, value, *args, **kwargs)
+        pk = getattr(value, "value", value)
+        cat = self._category_map.get(pk)
+        if cat:
+            option["attrs"]["data-category"] = cat
+        return option

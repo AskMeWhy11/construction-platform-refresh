@@ -23,6 +23,20 @@ from .models import (
 class CityAdmin(admin.ModelAdmin):
     list_display = ("name",)
     search_fields = ("name",)
+    fieldsets = (
+        (None, {"fields": ("name",)}),
+        ("Нормативы (переопределение)", {
+            "fields": ("sqm_per_resident", "doo_per_1000", "sosh_per_1000"),
+        }),
+        ("Отделка, ₽/м² (переопределение; пусто → дефолт)", {
+            "classes": ("collapse",),
+            "fields": (
+                ("finish_wb_res", "finish_wb_hotel"),
+                ("finish_rough_res", "finish_rough_hotel"),
+                ("finish_fine_res", "finish_fine_hotel"),
+            ),
+        }),
+    )
 
 @admin.register(MonthlyInflation)
 class MonthlyInflationAdmin(admin.ModelAdmin):
@@ -32,7 +46,10 @@ class MonthlyInflationAdmin(admin.ModelAdmin):
 
 @admin.register(BuildingPurpose)
 class BuildingPurposeAdmin(admin.ModelAdmin):
-    list_display = ("name", "apartments_area_ratio", "allowed_classes_count")
+    list_display = ("name", "category", "apartments_area_ratio", "allowed_classes_count")
+    list_filter = ("category",)
+    list_editable = ("category",)
+    list_display_links = ("name",)
     search_fields = ("name",)
     filter_horizontal = ("allowed_classes",)
 
@@ -43,8 +60,9 @@ class BuildingPurposeAdmin(admin.ModelAdmin):
 
 @admin.register(BuildingClass)
 class BuildingClassAdmin(admin.ModelAdmin):
-    list_display = ("name", "order")
-    list_editable = ("order",)
+    list_display = ("name", "order", "is_social")
+    list_editable = ("order", "is_social")
+    list_display_links = ("name",)
 
 
 class CostRateAdmin(admin.ModelAdmin):
@@ -118,6 +136,23 @@ class ParkingRateAdmin(admin.ModelAdmin):
 @admin.register(Settings)
 class SettingsAdmin(admin.ModelAdmin):
     list_display = ("inflation_clean_coef", "is_active")
+    fieldsets = (
+        (None, {"fields": ("inflation_clean_coef", "is_active")}),
+        ("Нормативы по умолчанию", {
+            "fields": (
+                "default_sqm_per_resident",
+                "default_doo_per_1000",
+                "default_sosh_per_1000",
+            ),
+        }),
+        ("Отделка по умолчанию, ₽/м²", {
+            "fields": (
+                ("default_finish_wb_res", "default_finish_wb_hotel"),
+                ("default_finish_rough_res", "default_finish_rough_hotel"),
+                ("default_finish_fine_res", "default_finish_fine_hotel"),
+            ),
+        }),
+    )
 
 
 class CostItemChildInline(admin.TabularInline):

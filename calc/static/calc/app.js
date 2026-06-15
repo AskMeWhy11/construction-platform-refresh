@@ -94,3 +94,58 @@
         setTimeout(initTomSelect, 0);
     }
 })();
+
+// ── Отделка (только жилое / гостиница) + лейбл площади ──
+(function () {
+    const purposeSel = document.querySelector('[name="purpose"]');
+    const finishBlock = document.querySelector("[data-finish-block]");
+    const finishOpts = document.querySelector("[data-finish-options]");
+    const finishCustom = document.querySelector("[data-finish-custom]");
+    const enableCb = document.getElementById("id_finish_enabled");
+    const areaLabel = document.querySelector("[data-area-label]");
+    if (!purposeSel) return;
+
+    const AREA_DEFAULT = areaLabel ? areaLabel.textContent : "";
+
+    function selectedCategory() {
+        const opt = purposeSel.options[purposeSel.selectedIndex];
+        return opt ? (opt.dataset.category || "") : "";
+    }
+
+    function syncFinishOptions() {
+        if (!finishOpts) return;
+        const on = enableCb && enableCb.checked && !finishBlock.classList.contains("hidden");
+        finishOpts.classList.toggle("hidden", !on);
+        if (on) syncCustom();
+        else if (finishCustom) finishCustom.classList.add("hidden");
+    }
+
+    function syncCustom() {
+        if (!finishCustom) return;
+        const checked = document.querySelector('input[name="finish_type"]:checked');
+        finishCustom.classList.toggle("hidden", !checked || checked.value !== "designer");
+    }
+
+    function syncPurpose() {
+        const cat = selectedCategory();
+        const finishEnabled = cat === "residential" || cat === "hotel";
+
+        if (finishBlock) {
+            finishBlock.classList.toggle("hidden", !finishEnabled);
+            if (!finishEnabled && enableCb) enableCb.checked = false;
+        }
+        if (areaLabel) {
+            areaLabel.textContent =
+                cat === "hotel" ? "Площадь номерного фонда, м²" : AREA_DEFAULT;
+        }
+        syncFinishOptions();
+    }
+
+    purposeSel.addEventListener("change", syncPurpose);
+    if (enableCb) enableCb.addEventListener("change", syncFinishOptions);
+    document.querySelectorAll('input[name="finish_type"]').forEach((r) =>
+        r.addEventListener("change", syncCustom)
+    );
+
+    syncPurpose();
+})();
