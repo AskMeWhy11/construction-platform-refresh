@@ -46,9 +46,14 @@ class CalcForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        # data-category на option назначения (для JS-динамики отделки/лейбла)
+        cat_map = dict(BuildingPurpose.objects.values_list("pk", "category"))
+        self.fields["purpose"].widget = PurposeSelect(category_map=cat_map)
+        self.fields["purpose"].widget.choices = self.fields["purpose"].choices
+
         for name, field in self.fields.items():
             cls = field.widget.__class__.__name__
-            if cls in ("Select", "NullBooleanSelect"):
+            if cls in ("Select", "NullBooleanSelect", "PurposeSelect"):
                 field.widget.attrs.setdefault("class", "select")
             elif cls in ("CheckboxInput", "RadioSelect"):
                 pass

@@ -85,13 +85,6 @@
             {{ form.ground_parking_spaces }}
             {{ form.ground_parking_spaces.errors }}
         </div>
-                <div class="field {% if not form.ground_parking.value %}hidden{% endif %}" data-depends-on="ground_parking">
-            <label class="label" for="{{ form.ground_parking_spaces.id_for_label }}">
-                {{ form.ground_parking_spaces.label }}
-            </label>
-            {{ form.ground_parking_spaces }}
-            {{ form.ground_parking_spaces.errors }}
-        </div>
 
         {# ── Отделка (только Ж/Г) ── #}
         <div class="field hidden" data-finish-block>
