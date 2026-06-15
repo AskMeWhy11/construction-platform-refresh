@@ -25,7 +25,7 @@ class CalcForm(forms.Form):
     total_area = forms.DecimalField(label="Общая площадь, м²", min_value=1, max_digits=12, decimal_places=2)
     start_date = forms.DateField(
         label="Дата начала строительства",
-        widget=forms.DateInput(attrs={"type": "date"}),
+        widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
         initial=date.today,
     )
     underground_parking = forms.BooleanField(label="Подземный паркинг", required=False)
