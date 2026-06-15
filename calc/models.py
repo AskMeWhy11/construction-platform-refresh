@@ -20,6 +20,31 @@ class City(models.Model):
         null=True, blank=True,
         help_text="Переопределение для города. Пусто → значение по умолчанию из настроек.",
     )
+    # ── Множители отделки, ₽/м² (переопределение для города; пусто → дефолт из настроек) ──
+    finish_wb_res = models.DecimalField(
+        "Отделка White Box, жилое, ₽/м²", max_digits=12, decimal_places=2,
+        null=True, blank=True,
+    )
+    finish_wb_hotel = models.DecimalField(
+        "Отделка White Box, гостиница, ₽/м²", max_digits=12, decimal_places=2,
+        null=True, blank=True,
+    )
+    finish_rough_res = models.DecimalField(
+        "Отделка черновая, жилое, ₽/м²", max_digits=12, decimal_places=2,
+        null=True, blank=True,
+    )
+    finish_rough_hotel = models.DecimalField(
+        "Отделка черновая, гостиница, ₽/м²", max_digits=12, decimal_places=2,
+        null=True, blank=True,
+    )
+    finish_fine_res = models.DecimalField(
+        "Отделка чистовая, жилое, ₽/м²", max_digits=12, decimal_places=2,
+        null=True, blank=True,
+    )
+    finish_fine_hotel = models.DecimalField(
+        "Отделка чистовая, гостиница, ₽/м²", max_digits=12, decimal_places=2,
+        null=True, blank=True,
+    )
 
     class Meta:
         verbose_name = "Город"
@@ -32,7 +57,20 @@ class City(models.Model):
 
 class BuildingPurpose(models.Model):
     """Функциональное назначение (для расчёта площади квартир и формы)."""
+    CAT_RESIDENTIAL = "residential"
+    CAT_HOTEL = "hotel"
+    CAT_OTHER = "other"
+    CATEGORY_CHOICES = [
+        (CAT_RESIDENTIAL, "Жилое"),
+        (CAT_HOTEL, "Гостиница / туризм"),
+        (CAT_OTHER, "Прочее"),
+    ]
+
     name = models.CharField("Назначение", max_length=100, unique=True)
+    category = models.CharField(
+        "Категория", max_length=20, choices=CATEGORY_CHOICES, default=CAT_OTHER,
+        help_text="Влияет на учёт отделки и лейбл площади. Отделка доступна для «Жилое» и «Гостиница».",
+    )
     apartments_area_ratio = models.DecimalField(
         "Доля площади квартир",
         max_digits=4, decimal_places=3, default=Decimal("0.000"),
@@ -54,10 +92,22 @@ class BuildingPurpose(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def finish_enabled(self) -> bool:
+        return self.category in (self.CAT_RESIDENTIAL, self.CAT_HOTEL)
+
+    @property
+    def is_hotel(self) -> bool:
+        return self.category == self.CAT_HOTEL
+
 
 class BuildingClass(models.Model):
     name = models.CharField("Класс/Тип объекта", max_length=100, unique=True)
     order = models.PositiveIntegerField("Порядок", default=0)
+    is_social = models.BooleanField(
+        "Социальный объект (ДОО/СОШ)", default=False,
+        help_text="Используется как источник себестоимости для расчёта стоимости ДОО/СОШ.",
+    )
 
     class Meta:
         verbose_name = "Класс строительства"
@@ -158,6 +208,25 @@ class Settings(models.Model):
     default_sosh_per_1000 = models.DecimalField(
         "Норматив СОШ на 1000 жителей (по умолчанию)",
         max_digits=7, decimal_places=2, default=Decimal("135.00"),
+    )
+    # ── Дефолтные множители отделки, ₽/м² (п.6) ──
+    default_finish_wb_res = models.DecimalField(
+        "WB, жилое, ₽/м² (по умолчанию)", max_digits=12, decimal_places=2, default=Decimal("15000.00"),
+    )
+    default_finish_wb_hotel = models.DecimalField(
+        "WB, гостиница, ₽/м² (по умолчанию)", max_digits=12, decimal_places=2, default=Decimal("20000.00"),
+    )
+    default_finish_rough_res = models.DecimalField(
+        "Черновая, жилое, ₽/м² (по умолчанию)", max_digits=12, decimal_places=2, default=Decimal("5000.00"),
+    )
+    default_finish_rough_hotel = models.DecimalField(
+        "Черновая, гостиница, ₽/м² (по умолчанию)", max_digits=12, decimal_places=2, default=Decimal("6000.00"),
+    )
+    default_finish_fine_res = models.DecimalField(
+        "Чистовая, жилое, ₽/м² (по умолчанию)", max_digits=12, decimal_places=2, default=Decimal("25000.00"),
+    )
+    default_finish_fine_hotel = models.DecimalField(
+        "Чистовая, гостиница, ₽/м² (по умолчанию)", max_digits=12, decimal_places=2, default=Decimal("40000.00"),
     )
     is_active = models.BooleanField("Активна", default=False)
 
