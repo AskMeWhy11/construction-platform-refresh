@@ -172,7 +172,8 @@ def _finish_rate(*, city, purpose, finish_type, finish_custom_rate, settings) ->
 
 
 def _social_price_per_sqm(city) -> Decimal:
-    """Себестоимость м² социального объекта (класс is_social) для города."""
+    """Цена за место социального объекта (класс is_social) для города.
+    Значение берётся из CostRate и трактуется как ₽/место."""
     rate = (
         CostRate.objects
         .filter(city=city, building_class__is_social=True)
@@ -272,14 +273,10 @@ def calculate(
     doo_seats = ceil(Decimal(residents) * Decimal("0.001") * doo_per_1000)
     sosh_seats = ceil(Decimal(residents) * Decimal("0.001") * sosh_per_1000)
 
-    social_price = _social_price_per_sqm(city)
-    if norms and social_price > 0:
-        doo_cost = (
-            Decimal(doo_seats) * norms.sqm_per_doo_seat * social_price
-        ).quantize(Decimal("0.01"))
-        sosh_cost = (
-            Decimal(sosh_seats) * norms.sqm_per_school_seat * social_price
-        ).quantize(Decimal("0.01"))
+    price_per_seat = _social_price_per_sqm(city)
+    if price_per_seat > 0:
+        doo_cost = (Decimal(doo_seats) * price_per_seat).quantize(Decimal("0.01"))
+        sosh_cost = (Decimal(sosh_seats) * price_per_seat).quantize(Decimal("0.01"))
     else:
         doo_cost = sosh_cost = Decimal("0.00")
 
