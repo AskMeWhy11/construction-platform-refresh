@@ -6,6 +6,7 @@
 set -euo pipefail
 
 OUT="${DUMP_OUT:-dump.md}"
+OUT="${OUT//\\//}" # Нормализация слэшей в пути вывода (замена '\' на '/')
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
@@ -21,6 +22,7 @@ collect_files() {
 
 # --- собираем тело
 for target in "$@"; do
+    target="${target//\\//}" # Нормализация слэшей во входных путях
     if [ -f "$target" ]; then
         files=("$target")
     elif [ -d "$target" ]; then
@@ -54,6 +56,7 @@ done
 {
     printf '# Dump\n\n## Tree\n\n```\n'
     for target in "$@"; do
+        target="${target//\\//}" # Нормализация слэшей (на случай, если в $@ остались оригинальные значения)
         if [ -d "$target" ]; then
             collect_files "$target"
         else
