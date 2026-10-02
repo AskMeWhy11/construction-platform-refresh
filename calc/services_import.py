@@ -29,6 +29,22 @@ def _to_decimal(raw):
         raise ValueError(f"Не число: {raw!r}")
 
 
+def _format_value(d: Decimal) -> str:
+    """Число в строку без потери значащих нулей в целой части.
+
+    format(d, "f") даёт "125200" или "125200.0" — обрезаем нули только
+    в дробной части, иначе 125200 превратилось бы в "1252".
+    """
+    text = format(d, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    if not text:
+        text = "0"
+    if "." not in text:
+        text += ".00"
+    return text
+
+
 def parse_workbook(file_bytes: bytes) -> dict:
     """
     Возвращает:
@@ -113,9 +129,7 @@ def parse_workbook(file_bytes: bytes) -> dict:
             try:
                 d = _to_decimal(raw)
                 if d is not None:
-                    value_str = format(d, "f").rstrip("0").rstrip(".") or "0"
-                    if "." not in value_str:
-                        value_str += ".00"
+                    value_str = _format_value(d)
             except ValueError as e:
                 err = str(e)
                 error_cells += 1
