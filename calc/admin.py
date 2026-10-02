@@ -97,6 +97,9 @@ class CostRateAdmin(admin.ModelAdmin):
             path("pivot/import/apply/",
                  self.admin_site.admin_view(views_admin.cost_pivot_import_apply),
                  name="calc_costrate_pivot_import_apply"),
+            path("pivot/export/",
+                 self.admin_site.admin_view(views_admin.cost_pivot_export),
+                 name="calc_costrate_pivot_export"),
         ]
         return custom + urls
 

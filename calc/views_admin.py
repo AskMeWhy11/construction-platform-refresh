@@ -2,17 +2,19 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.admin.views.decorators import staff_member_required
-from django.http import JsonResponse, HttpResponseBadRequest
+from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_POST
+from .services_export import build_pivot_workbook, export_filename
 from .services_import import parse_workbook, apply_import
 
 from .models import BuildingClass, City, CostRate
 
 
-@staff_member_required
-def cost_pivot(request):
+def _cost_pivot_dataset():
+    """Данные pivot-таблицы: классы в порядке страницы, города по алфавиту."""
     classes = list(BuildingClass.objects.all().order_by("order", "name"))
     cities = list(City.objects.all().order_by("name"))
 
@@ -27,6 +29,16 @@ def cost_pivot(request):
             for cls in classes
         ],
     } for city in cities]
+
+    return {"classes": classes, "cities": cities, "rows": rows}
+
+
+@staff_member_required
+def cost_pivot(request):
+    dataset = _cost_pivot_dataset()
+    classes = dataset["classes"]
+    cities = dataset["cities"]
+    rows = dataset["rows"]
 
     ctx = {
         "classes": classes,
@@ -133,3 +145,15 @@ def cost_pivot_import_apply(request):
         clear_zeros=bool(payload.get("clear_zeros", False)),
     )
     return JsonResponse({"ok": True, **result})
+
+@staff_member_required
+def cost_pivot_export(request):
+    data = build_pivot_workbook(_cost_pivot_dataset())
+    response = HttpResponse(
+        data,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = content_disposition_header(
+        True, export_filename()
+    )
+    return response
