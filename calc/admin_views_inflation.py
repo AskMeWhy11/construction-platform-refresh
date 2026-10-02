@@ -1,9 +1,15 @@
 """Служебные view админки для «Инфляция (помесячно)»."""
 from django.contrib import messages
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from .models import MonthlyInflation
+from .services_inflation_export import (
+    CONTENT_TYPE,
+    build_export_workbook,
+    export_filename,
+)
 from .services_inflation_import import (
     MAX_FILE_SIZE,
     MonthlyInflationImportError,
@@ -62,3 +68,17 @@ def monthlyinflation_import(request):
 
     messages.success(request, f"Создано {created}, обновлено {updated}.")
     return redirect(_changelist_url())
+
+
+def monthlyinflation_export(request):
+    """
+    Выгрузка всей таблицы в .xlsx.
+    Доступ: пользователи с view-правом на модель (admin_site.admin_view + проверка).
+    """
+    if not request.user.has_perm("calc.view_monthlyinflation"):
+        messages.error(request, "Недостаточно прав для выгрузки помесячной инфляции.")
+        return redirect(_changelist_url())
+
+    response = HttpResponse(build_export_workbook(), content_type=CONTENT_TYPE)
+    response["Content-Disposition"] = f'attachment; filename="{export_filename()}"'
+    return response
