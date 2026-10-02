@@ -51,6 +51,8 @@ class MonthlyInflationAdmin(admin.ModelAdmin):
         custom = [
             path("import/", self.admin_site.admin_view(admin_views_inflation.monthlyinflation_import),
                  name="calc_monthlyinflation_import"),
+            path("export/", self.admin_site.admin_view(admin_views_inflation.monthlyinflation_export),
+                 name="calc_monthlyinflation_export"),
         ]
         return custom + urls
 
