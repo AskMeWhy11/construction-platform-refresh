@@ -1,0 +1,41 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}Импорт Excel — {{ opts.verbose_name_plural }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Главная</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">Калькулятор экспертизы</a>
+    &rsaquo; <a href="{{ changelist_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; Импорт Excel
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <form method="post" enctype="multipart/form-data" action="">
+        {% csrf_token %}
+        <fieldset class="module aligned">
+            <h2>Импорт Excel — {{ opts.verbose_name_plural }}</h2>
+            <div class="form-row">
+                <div>
+                    <label for="id_file">Файл .xlsx:</label>
+                    <input type="file" name="file" id="id_file" accept=".xlsx" required>
+                    <p class="help">
+                        Первый лист файла. Колонка A — «Месяц» (целое ≥ 1), колонка B — «Инфляция»
+                        (число, разделитель «,» или «.»). Строка-шапка с заголовками
+                        «Месяц» / «Инфляция» распознаётся и пропускается.
+                        Максимальный размер файла — {{ max_file_size_mb }} МБ.
+                        Существующие месяцы обновляются, новые создаются.
+                    </p>
+                </div>
+            </div>
+        </fieldset>
+
+        <div class="submit-row">
+            <input type="submit" value="Импортировать" class="default">
+            <a href="{{ changelist_url }}" class="closelink">← Вернуться к списку</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
