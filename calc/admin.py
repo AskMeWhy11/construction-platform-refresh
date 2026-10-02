@@ -5,6 +5,7 @@ from django.utils.html import format_html
 from .models import MonthlyInflation
 
 from . import views_admin
+from . import admin_views_inflation
 from .models import (
     BuildingClass,
     BuildingPurpose,
@@ -43,6 +44,15 @@ class MonthlyInflationAdmin(admin.ModelAdmin):
     list_display = ("month", "rate")
     list_editable = ("rate",)
     ordering = ("month",)
+    change_list_template = "calc/admin_monthlyinflation_changelist.html"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path("import/", self.admin_site.admin_view(admin_views_inflation.monthlyinflation_import),
+                 name="calc_monthlyinflation_import"),
+        ]
+        return custom + urls
 
 @admin.register(BuildingPurpose)
 class BuildingPurposeAdmin(admin.ModelAdmin):

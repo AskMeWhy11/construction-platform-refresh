@@ -1,0 +1,495 @@
+diff --git a/calc/admin.py b/calc/admin.py
+index fe392e3..7ba0669 100644
+--- a/calc/admin.py
++++ b/calc/admin.py
+@@ -5,6 +5,7 @@ from django.utils.html import format_html
+ from .models import MonthlyInflation
+ 
+ from . import views_admin
++from . import admin_views_inflation
+ from .models import (
+     BuildingClass,
+     BuildingPurpose,
+@@ -43,6 +44,15 @@ class MonthlyInflationAdmin(admin.ModelAdmin):
+     list_display = ("month", "rate")
+     list_editable = ("rate",)
+     ordering = ("month",)
++    change_list_template = "calc/admin_monthlyinflation_changelist.html"
++
++    def get_urls(self):
++        urls = super().get_urls()
++        custom = [
++            path("import/", self.admin_site.admin_view(admin_views_inflation.monthlyinflation_import),
++                 name="calc_monthlyinflation_import"),
++        ]
++        return custom + urls
+ 
+ @admin.register(BuildingPurpose)
+ class BuildingPurposeAdmin(admin.ModelAdmin):
+diff --git a/calc/admin_views_inflation.py b/calc/admin_views_inflation.py
+new file mode 100644
+index 0000000..62bd301
+--- /dev/null
++++ b/calc/admin_views_inflation.py
+@@ -0,0 +1,64 @@
++"""Служебные view админки для «Инфляция (помесячно)»."""
++from django.contrib import messages
++from django.shortcuts import redirect, render
++from django.urls import reverse
++
++from .models import MonthlyInflation
++from .services_inflation_import import (
++    MAX_FILE_SIZE,
++    MonthlyInflationImportError,
++    import_from_bytes,
++)
++
++FILE_ERROR_SUFFIX = "Поддерживается только файл .xlsx."
++
++
++def _changelist_url() -> str:
++    return reverse("admin:calc_monthlyinflation_changelist")
++
++
++def monthlyinflation_import(request):
++    """
++    Форма загрузки Excel и применение импорта.
++    Доступ: пользователи с change-правом на модель (admin_site.admin_view + проверка).
++    """
++    if not request.user.has_perm("calc.change_monthlyinflation"):
++        messages.error(request, "Недостаточно прав для импорта помесячной инфляции.")
++        return redirect(_changelist_url())
++
++    context = {
++        "title": "Импорт Excel",
++        "opts": MonthlyInflation._meta,
++        "has_view_permission": True,
++        "changelist_url": _changelist_url(),
++        "max_file_size_mb": MAX_FILE_SIZE // (1024 * 1024),
++    }
++
++    if request.method != "POST":
++        return render(request, "calc/admin_monthlyinflation_import.html", context)
++
++    upload = request.FILES.get("file")
++    if not upload:
++        messages.error(request, "Файл не выбран. " + FILE_ERROR_SUFFIX)
++        return render(request, "calc/admin_monthlyinflation_import.html", context)
++
++    if not (upload.name or "").lower().endswith(".xlsx"):
++        messages.error(request, "Требуется файл .xlsx. " + FILE_ERROR_SUFFIX)
++        return render(request, "calc/admin_monthlyinflation_import.html", context)
++
++    if upload.size > MAX_FILE_SIZE:
++        messages.error(
++            request,
++            f"Файл больше {context['max_file_size_mb']} МБ ({upload.size} байт).",
++        )
++        return render(request, "calc/admin_monthlyinflation_import.html", context)
++
++    data = upload.read()
++    try:
++        created, updated = import_from_bytes(data)
++    except MonthlyInflationImportError as e:
++        messages.error(request, f"Импорт отменён (изменения не применены). Строка {e.row_number}: {e.reason}.")
++        return render(request, "calc/admin_monthlyinflation_import.html", context)
++
++    messages.success(request, f"Создано {created}, обновлено {updated}.")
++    return redirect(_changelist_url())
+diff --git a/calc/services_inflation_import.py b/calc/services_inflation_import.py
+new file mode 100644
+index 0000000..b6daeb1
+--- /dev/null
++++ b/calc/services_inflation_import.py
+@@ -0,0 +1,173 @@
++"""Импорт MonthlyInflation из Excel-файла (колонка A — месяц, колонка B — инфляция)."""
++from decimal import Decimal, InvalidOperation
++from io import BytesIO
++from itertools import chain
++
++from django.db import transaction
++from openpyxl import load_workbook
++
++from .models import MonthlyInflation
++
++MAX_FILE_SIZE = 5 * 1024 * 1024
++
++HEADER_MONTH = "месяц"
++HEADER_RATE = "инфляция"
++
++MAX_RATE_DIGITS = MonthlyInflation._meta.get_field("rate").max_digits
++MAX_RATE_DECIMALS = MonthlyInflation._meta.get_field("rate").decimal_places
++MAX_RATE_INT_DIGITS = MAX_RATE_DIGITS - MAX_RATE_DECIMALS
++
++
++class MonthlyInflationImportError(Exception):
++    """Ошибка импорта: номер строки файла + причина. Откат — на вызывающей стороне."""
++
++    def __init__(self, row_number: int, reason: str):
++        self.row_number = row_number
++        self.reason = reason
++        super().__init__(f"Строка {row_number}: {reason}.")
++
++
++def _norm(s) -> str:
++    if s is None:
++        return ""
++    return str(s).strip().lower().replace("ё", "е")
++
++
++def _clean_text(raw) -> str:
++    return str(raw).replace(" ", "").replace("\xa0", "").strip()
++
++
++def _is_header(row) -> bool:
++    month = _norm(row[0]) if len(row) > 0 else ""
++    rate = _norm(row[1]) if len(row) > 1 else ""
++    return month == HEADER_MONTH and rate == HEADER_RATE
++
++
++def _parse_month(raw, row_number: int) -> int:
++    if raw is None or _clean_text(raw) == "":
++        raise MonthlyInflationImportError(row_number, "не заполнен месяц (колонка A)")
++
++    if isinstance(raw, bool):
++        raise MonthlyInflationImportError(row_number, f"месяц должен быть целым числом: {raw!r}")
++
++    try:
++        value = Decimal(_clean_text(raw).replace(",", "."))
++    except (InvalidOperation, ValueError):
++        raise MonthlyInflationImportError(row_number, f"месяц должен быть целым числом: {raw!r}")
++
++    if value != value.to_integral_value():
++        raise MonthlyInflationImportError(row_number, f"месяц должен быть целым числом: {raw!r}")
++
++    month = int(value)
++    if month < 1:
++        raise MonthlyInflationImportError(row_number, f"месяц должен быть ≥ 1, получено {month}")
++    return month
++
++
++def _parse_rate(raw, row_number: int) -> Decimal:
++    if raw is None or _clean_text(raw) == "":
++        raise MonthlyInflationImportError(row_number, "не заполнена инфляция (колонка B)")
++
++    if isinstance(raw, bool):
++        raise MonthlyInflationImportError(row_number, f"инфляция — не число: {raw!r}")
++
++    if isinstance(raw, (int, float, Decimal)):
++        value = Decimal(str(raw))
++    else:
++        try:
++            value = Decimal(_clean_text(raw).replace(",", "."))
++        except (InvalidOperation, ValueError):
++            raise MonthlyInflationImportError(row_number, f"инфляция — не число: {raw!r}")
++
++    if value <= 0:
++        raise MonthlyInflationImportError(row_number, f"инфляция должна быть > 0, получено {raw!r}")
++
++    _, digits, exponent = value.as_tuple()
++    decimals = max(0, -exponent)
++    int_digits = max(len(digits) - decimals, 0)
++    if decimals > MAX_RATE_DECIMALS or int_digits > MAX_RATE_INT_DIGITS:
++        raise MonthlyInflationImportError(
++            row_number,
++            f"инфляция не помещается в формат поля (до {MAX_RATE_INT_DIGITS} цифр "
++            f"перед запятой, до {MAX_RATE_DECIMALS} после): {raw!r}",
++        )
++    return value
++
++
++def parse_workbook(file_bytes: bytes) -> list[tuple[int, int, Decimal]]:
++    """
++    Первый лист файла → список (номер строки, месяц, ставка).
++    Шапка («Месяц», «Инфляция») опциональна. Любая битая строка → MonthlyInflationImportError.
++    """
++    try:
++        wb = load_workbook(BytesIO(file_bytes), data_only=True, read_only=True)
++    except Exception as e:
++        raise MonthlyInflationImportError(1, f"не удалось прочитать файл: {e}")
++
++    try:
++        ws = wb.active
++        if ws is None:
++            raise MonthlyInflationImportError(1, "в файле нет листов")
++
++        rows_iter = ws.iter_rows(values_only=True)
++        try:
++            first_row = next(rows_iter)
++        except StopIteration:
++            raise MonthlyInflationImportError(1, "файл пуст")
++
++        parsed: list[tuple[int, int, Decimal]] = []
++        seen: dict[int, int] = {}
++
++        if _is_header(first_row):
++            data_rows = rows_iter
++        elif first_row and any(v is not None and str(v).strip() != "" for v in first_row):
++            data_rows = chain([first_row], rows_iter)
++        else:
++            data_rows = rows_iter
++
++        for row_number, row in enumerate(data_rows, start=2):
++            if not row or all(v is None or str(v).strip() == "" for v in row):
++                continue
++            if _is_header(row):
++                continue
++
++            month = _parse_month(row[0] if len(row) > 0 else None, row_number)
++            rate = _parse_rate(row[1] if len(row) > 1 else None, row_number)
++
++            if month in seen:
++                raise MonthlyInflationImportError(
++                    row_number, f"месяц {month} уже встречался в строке {seen[month]}"
++                )
++            seen[month] = row_number
++            parsed.append((row_number, month, rate))
++    finally:
++        wb.close()
++
++    if not parsed:
++        raise MonthlyInflationImportError(2, "в файле нет строк с данными")
++
++    return parsed
++
++
++def apply_import(parsed: list[tuple[int, int, Decimal]]) -> tuple[int, int]:
++    """
++    Upsert по месяцу внутри одной транзакции. Возвращает (создано, обновлено).
++    Ошибка любой строки → исключение → полный откат.
++    """
++    created = 0
++    updated = 0
++    with transaction.atomic():
++        for _row_number, month, rate in parsed:
++            _obj, was_created = MonthlyInflation.objects.update_or_create(
++                month=month, defaults={"rate": rate}
++            )
++            if was_created:
++                created += 1
++            else:
++                updated += 1
++    return created, updated
++
++
++def import_from_bytes(file_bytes: bytes) -> tuple[int, int]:
++    """Парсинг + применение. Возвращает (создано, обновлено)."""
++    return apply_import(parse_workbook(file_bytes))
+diff --git a/calc/templates/calc/admin_monthlyinflation_changelist.html b/calc/templates/calc/admin_monthlyinflation_changelist.html
+new file mode 100644
+index 0000000..74c1922
+--- /dev/null
++++ b/calc/templates/calc/admin_monthlyinflation_changelist.html
+@@ -0,0 +1,11 @@
++{% extends "admin/change_list.html" %}
++{% load admin_urls %}
++
++{% block object-tools-items %}
++    <li>
++        <a href="{% url 'admin:calc_monthlyinflation_import' %}" class="addlink">
++            ⬆ Импорт Excel
++        </a>
++    </li>
++    {{ block.super }}
++{% endblock %}
+diff --git a/calc/templates/calc/admin_monthlyinflation_import.html b/calc/templates/calc/admin_monthlyinflation_import.html
+new file mode 100644
+index 0000000..ad39031
+--- /dev/null
++++ b/calc/templates/calc/admin_monthlyinflation_import.html
+@@ -0,0 +1,41 @@
++{% extends "admin/base_site.html" %}
++
++{% block title %}Импорт Excel — {{ opts.verbose_name_plural }}{% endblock %}
++
++{% block breadcrumbs %}
++<div class="breadcrumbs">
++    <a href="{% url 'admin:index' %}">Главная</a>
++    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">Калькулятор экспертизы</a>
++    &rsaquo; <a href="{{ changelist_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
++    &rsaquo; Импорт Excel
++</div>
++{% endblock %}
++
++{% block content %}
++<div id="content-main">
++    <form method="post" enctype="multipart/form-data" action="">
++        {% csrf_token %}
++        <fieldset class="module aligned">
++            <h2>Импорт Excel — {{ opts.verbose_name_plural }}</h2>
++            <div class="form-row">
++                <div>
++                    <label for="id_file">Файл .xlsx:</label>
++                    <input type="file" name="file" id="id_file" accept=".xlsx" required>
++                    <p class="help">
++                        Первый лист файла. Колонка A — «Месяц» (целое ≥ 1), колонка B — «Инфляция»
++                        (число, разделитель «,» или «.»). Строка-шапка с заголовками
++                        «Месяц» / «Инфляция» распознаётся и пропускается.
++                        Максимальный размер файла — {{ max_file_size_mb }} МБ.
++                        Существующие месяцы обновляются, новые создаются.
++                    </p>
++                </div>
++            </div>
++        </fieldset>
++
++        <div class="submit-row">
++            <input type="submit" value="Импортировать" class="default">
++            <a href="{{ changelist_url }}" class="closelink">← Вернуться к списку</a>
++        </div>
++    </form>
++</div>
++{% endblock %}
+diff --git a/calc/tests/__init__.py b/calc/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/calc/tests/test_monthlyinflation_import.py b/calc/tests/test_monthlyinflation_import.py
+new file mode 100644
+index 0000000..9ccf3e4
+--- /dev/null
++++ b/calc/tests/test_monthlyinflation_import.py
+@@ -0,0 +1,145 @@
++"""Тесты импорта Excel для справочника «Инфляция (помесячно)»."""
++from decimal import Decimal
++from io import BytesIO
++
++from django.contrib.auth.models import Permission, User
++from django.core.files.uploadedfile import SimpleUploadedFile
++from django.test import TestCase
++from django.urls import reverse
++from openpyxl import Workbook
++
++from calc.models import MonthlyInflation
++
++IMPORT_URL_NAME = "admin:calc_monthlyinflation_import"
++
++
++def make_xlsx(rows, sheet_title="Лист1", header=None) -> bytes:
++    wb = Workbook()
++    ws = wb.active
++    ws.title = sheet_title
++    if header is not None:
++        ws.append(list(header))
++    for row in rows:
++        ws.append(list(row))
++    buf = BytesIO()
++    wb.save(buf)
++    wb.close()
++    return buf.getvalue()
++
++
++def upload(payload: bytes, name="inflation.xlsx") -> SimpleUploadedFile:
++    return SimpleUploadedFile(
++        name,
++        payload,
++        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
++    )
++
++
++class MonthlyInflationImportTests(TestCase):
++    def setUp(self):
++        self.user = User.objects.create_superuser("boss", "boss@example.com", "pw")
++        self.client.force_login(self.user)
++        # Миграция-сид 0009 заполняет ~128 месяцев: для арифметики тестов чистим таблицу.
++        MonthlyInflation.objects.all().delete()
++
++    def post(self, payload, name="inflation.xlsx"):
++        return self.client.post(reverse(IMPORT_URL_NAME), {"file": upload(payload, name)}, follow=True)
++
++    def messages(self, response):
++        return [str(m) for m in response.context["messages"]]
++
++    def test_changelist_has_import_button(self):
++        response = self.client.get(reverse("admin:calc_monthlyinflation_changelist"))
++        self.assertContains(response, "Импорт Excel")
++        self.assertContains(response, reverse(IMPORT_URL_NAME))
++
++    def test_import_page_renders(self):
++        response = self.client.get(reverse(IMPORT_URL_NAME))
++        self.assertEqual(response.status_code, 200)
++        self.assertContains(response, 'name="file"')
++
++    def test_creates_and_updates_rows(self):
++        MonthlyInflation.objects.create(month=1, rate=Decimal("0.0732"))
++
++        payload = make_xlsx(
++            [
++                ("Месяц", "Инфляция"),
++                (1, "0,5000"),
++                (2, 0.0747),
++                (3, "0.0762"),
++            ]
++        )
++        response = self.post(payload)
++
++        self.assertEqual(MonthlyInflation.objects.count(), 3)
++        self.assertEqual(MonthlyInflation.objects.get(month=1).rate, Decimal("0.5000"))
++        self.assertEqual(MonthlyInflation.objects.get(month=2).rate, Decimal("0.0747"))
++        self.assertIn("Создано 2, обновлено 1.", self.messages(response))
++
++    def test_header_is_optional(self):
++        payload = make_xlsx([(1, "0,1000"), (2, 0.2000)])
++        response = self.post(payload)
++        self.assertEqual(MonthlyInflation.objects.count(), 2)
++        self.assertIn("Создано 2, обновлено 0.", self.messages(response))
++
++    def test_broken_row_rolls_back(self):
++        MonthlyInflation.objects.create(month=1, rate=Decimal("0.0732"))
++
++        payload = make_xlsx(
++            [
++                ("Месяц", "Инфляция"),
++                (1, "0.9000"),
++                (2, "не число"),
++            ]
++        )
++        response = self.post(payload)
++
++        self.assertEqual(MonthlyInflation.objects.count(), 1)
++        self.assertEqual(MonthlyInflation.objects.get(month=1).rate, Decimal("0.0732"))
++        joined = " ".join(self.messages(response))
++        self.assertIn("Строка 3", joined)
++        self.assertIn("изменения не применены", joined)
++
++    def test_duplicate_month_in_file_is_error(self):
++        payload = make_xlsx([(1, 0.1), (1, 0.2)])
++        response = self.post(payload)
++
++        self.assertEqual(MonthlyInflation.objects.count(), 0)
++        joined = " ".join(self.messages(response))
++        self.assertIn("уже встречался", joined)
++
++    def test_month_must_be_positive_integer(self):
++        payload = make_xlsx([(0, 0.1)])
++        response = self.post(payload)
++        self.assertEqual(MonthlyInflation.objects.count(), 0)
++        self.assertIn("месяц должен быть ≥ 1", " ".join(self.messages(response)))
++
++    def test_rejects_wrong_extension(self):
++        response = self.post(b"not excel", name="inflation.csv")
++        self.assertEqual(response.status_code, 200)
++        self.assertIn("Требуется файл .xlsx", " ".join(self.messages(response)))
++
++    def test_rejects_unreadable_file(self):
++        response = self.post(b"definitely not a workbook")
++        self.assertEqual(MonthlyInflation.objects.count(), 0)
++        self.assertIn("не удалось прочитать файл", " ".join(self.messages(response)))
++
++    def test_requires_change_permission(self):
++        user = User.objects.create_user("viewer", "v@example.com", "pw")
++        user.user_permissions.add(
++            Permission.objects.get(codename="view_monthlyinflation")
++        )
++        self.client.force_login(user)
++
++        response = self.client.post(
++            reverse(IMPORT_URL_NAME), {"file": upload(make_xlsx([(1, 0.1)]))}, follow=False
++        )
++        # Без change-права admin_view уводит на страницу логина
++        self.assertEqual(response.status_code, 302)
++        self.assertEqual(MonthlyInflation.objects.count(), 0)
++
++    def test_anonymous_redirected_to_login(self):
++        self.client.logout()
++        response = self.client.get(reverse(IMPORT_URL_NAME))
++        self.assertEqual(response.status_code, 302)
++        self.assertIn("/admin/login/", response["Location"])

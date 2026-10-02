@@ -1,0 +1,11 @@
+{% extends "admin/change_list.html" %}
+{% load admin_urls %}
+
+{% block object-tools-items %}
+    <li>
+        <a href="{% url 'admin:calc_monthlyinflation_import' %}" class="addlink">
+            ⬆ Импорт Excel
+        </a>
+    </li>
+    {{ block.super }}
+{% endblock %}
