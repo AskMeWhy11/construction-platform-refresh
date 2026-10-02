@@ -37,6 +37,10 @@
             <button type="button" class="cp-btn cp-btn-outline" id="cp-import">
                 ⬆ Импорт Excel
             </button>
+            <a class="cp-btn cp-btn-outline" id="cp-export"
+               href="{% url 'admin:calc_costrate_pivot_export' %}">
+                ⬇ Экспорт Excel
+            </a>
             <input type="file" id="cp-file" accept=".xlsx" hidden>
         </div>
 
