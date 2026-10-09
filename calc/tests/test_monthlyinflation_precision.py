@@ -14,6 +14,7 @@ from calc.services_inflation_import import (
     MAX_RATE_DECIMALS,
     MAX_RATE_DIGITS,
     MAX_RATE_INT_DIGITS,
+    RATE_QUANTUM,
     import_from_bytes,
 )
 
@@ -97,8 +98,33 @@ class MonthlyInflationPrecisionTests(TestCase):
         finally:
             wb.close()
 
-    def test_import_rejects_eight_decimals(self):
-        payload = make_xlsx([(1, "0.07320011")])
+    def test_rate_quantum_matches_field(self):
+        self.assertEqual(RATE_QUANTUM, Decimal("0.0000001"))
+
+    def test_import_rounds_extra_decimals(self):
+        """8+ знаков — не ошибка: значение округляется до 7 знаков."""
+        created, updated = import_from_bytes(make_xlsx([(1, "0.07320011")]))
+        self.assertEqual((created, updated), (1, 0))
+        self.assertEqual(MonthlyInflation.objects.get(month=1).rate, Decimal("0.0732001"))
+
+    def test_import_rounds_half_up(self):
+        import_from_bytes(make_xlsx([(1, "0.07320015")]))
+        self.assertEqual(MonthlyInflation.objects.get(month=1).rate, Decimal("0.0732002"))
+
+    def test_import_rounds_down_when_below_half(self):
+        import_from_bytes(make_xlsx([(1, "0.07320014")]))
+        self.assertEqual(MonthlyInflation.objects.get(month=1).rate, Decimal("0.0732001"))
+
+    def test_import_rounds_excel_float_artifact(self):
+        """Регресс: строка 40 из файла давала 0.17232999999999998 и падала."""
+        rows = [("Месяц", "Инфляция")] + [(m, 0.17233) for m in range(1, 41)]
+        created, updated = import_from_bytes(make_xlsx(rows))
+
+        self.assertEqual((created, updated), (40, 0))
+        self.assertEqual(MonthlyInflation.objects.get(month=40).rate, Decimal("0.1723300"))
+
+    def test_import_rejects_value_rounding_to_zero(self):
+        payload = make_xlsx([(1, "0.00000004")])
         response = self.client.post(
             reverse(IMPORT_URL_NAME),
             {"file": SimpleUploadedFile("x.xlsx", payload)},
@@ -108,7 +134,22 @@ class MonthlyInflationPrecisionTests(TestCase):
         self.assertEqual(MonthlyInflation.objects.count(), 0)
         joined = " ".join(str(m) for m in response.context["messages"])
         self.assertIn("Строка 2", joined)
-        self.assertIn("не помещается в формат поля", joined)
+        self.assertIn("получился 0", joined)
+
+    def test_import_rejects_value_rounding_past_max(self):
+        """99.99999999 -> 100.0000000: 3 цифры в целой части, ошибка сохраняется."""
+        payload = make_xlsx([(1, "99.99999999")])
+        response = self.client.post(
+            reverse(IMPORT_URL_NAME),
+            {"file": SimpleUploadedFile("x.xlsx", payload)},
+            follow=True,
+        )
+
+        self.assertEqual(MonthlyInflation.objects.count(), 0)
+        self.assertIn(
+            "не помещается в формат поля",
+            " ".join(str(m) for m in response.context["messages"]),
+        )
 
     def test_import_rejects_three_integer_digits(self):
         payload = make_xlsx([(1, "123.4567890")])
