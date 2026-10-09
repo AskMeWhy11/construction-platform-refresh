@@ -1,0 +1,221 @@
+diff --git a/calc/admin.py b/calc/admin.py
+index 7ba0669..946ed4c 100644
+--- a/calc/admin.py
++++ b/calc/admin.py
+@@ -51,6 +51,8 @@ class MonthlyInflationAdmin(admin.ModelAdmin):
+         custom = [
+             path("import/", self.admin_site.admin_view(admin_views_inflation.monthlyinflation_import),
+                  name="calc_monthlyinflation_import"),
++            path("export/", self.admin_site.admin_view(admin_views_inflation.monthlyinflation_export),
++                 name="calc_monthlyinflation_export"),
+         ]
+         return custom + urls
+ 
+diff --git a/calc/admin_views_inflation.py b/calc/admin_views_inflation.py
+index 62bd301..0e6382a 100644
+--- a/calc/admin_views_inflation.py
++++ b/calc/admin_views_inflation.py
+@@ -1,9 +1,15 @@
+ """Служебные view админки для «Инфляция (помесячно)»."""
+ from django.contrib import messages
++from django.http import HttpResponse
+ from django.shortcuts import redirect, render
+ from django.urls import reverse
+ 
+ from .models import MonthlyInflation
++from .services_inflation_export import (
++    CONTENT_TYPE,
++    build_export_workbook,
++    export_filename,
++)
+ from .services_inflation_import import (
+     MAX_FILE_SIZE,
+     MonthlyInflationImportError,
+@@ -62,3 +68,17 @@ def monthlyinflation_import(request):
+ 
+     messages.success(request, f"Создано {created}, обновлено {updated}.")
+     return redirect(_changelist_url())
++
++
++def monthlyinflation_export(request):
++    """
++    Выгрузка всей таблицы в .xlsx.
++    Доступ: пользователи с view-правом на модель (admin_site.admin_view + проверка).
++    """
++    if not request.user.has_perm("calc.view_monthlyinflation"):
++        messages.error(request, "Недостаточно прав для выгрузки помесячной инфляции.")
++        return redirect(_changelist_url())
++
++    response = HttpResponse(build_export_workbook(), content_type=CONTENT_TYPE)
++    response["Content-Disposition"] = f'attachment; filename="{export_filename()}"'
++    return response
+diff --git a/calc/services_inflation_export.py b/calc/services_inflation_export.py
+new file mode 100644
+index 0000000..2b2cfb0
+--- /dev/null
++++ b/calc/services_inflation_export.py
+@@ -0,0 +1,47 @@
++"""Выгрузка MonthlyInflation в Excel (колонка A — месяц, колонка B — инфляция)."""
++from datetime import datetime
++from io import BytesIO
++
++from openpyxl import Workbook
++from openpyxl.styles import Font
++
++from .models import MonthlyInflation
++
++SHEET_TITLE = "Инфляция"
++HEADER_MONTH = "Месяц"
++HEADER_RATE = "Инфляция"
++# Тот же формат, что и у поля модели: 4 знака после запятой.
++RATE_NUMBER_FORMAT = "0.0000"
++
++CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
++
++
++def export_filename(now: datetime | None = None) -> str:
++    """Имя файла только из ASCII — безопасно для Content-Disposition."""
++    stamp = (now or datetime.now()).strftime("%Y%m%d")
++    return f"monthly_inflation_{stamp}.xlsx"
++
++
++def build_export_workbook() -> bytes:
++    """
++    Файл выгрузки: строка-шапка + по строке на месяц (сортировка по месяцу).
++    Пустая таблица → файл только с шапкой.
++    """
++    wb = Workbook()
++    ws = wb.active
++    ws.title = SHEET_TITLE
++
++    ws.append([HEADER_MONTH, HEADER_RATE])
++    for cell in ws[1]:
++        cell.font = Font(bold=True)
++    ws.column_dimensions["A"].width = 10
++    ws.column_dimensions["B"].width = 14
++
++    for month, rate in MonthlyInflation.objects.order_by("month").values_list("month", "rate"):
++        ws.append([month, rate])
++        ws.cell(row=ws.max_row, column=2).number_format = RATE_NUMBER_FORMAT
++
++    buf = BytesIO()
++    wb.save(buf)
++    wb.close()
++    return buf.getvalue()
+diff --git a/calc/templates/calc/admin_monthlyinflation_changelist.html b/calc/templates/calc/admin_monthlyinflation_changelist.html
+index 74c1922..fdfefaa 100644
+--- a/calc/templates/calc/admin_monthlyinflation_changelist.html
++++ b/calc/templates/calc/admin_monthlyinflation_changelist.html
+@@ -7,5 +7,10 @@
+             ⬆ Импорт Excel
+         </a>
+     </li>
++    <li>
++        <a href="{% url 'admin:calc_monthlyinflation_export' %}" class="addlink" style="background:#1abc9c;">
++            ⬇ Экспорт Excel
++        </a>
++    </li>
+     {{ block.super }}
+ {% endblock %}
+diff --git a/calc/tests/test_monthlyinflation_export.py b/calc/tests/test_monthlyinflation_export.py
+new file mode 100644
+index 0000000..b2cb064
+--- /dev/null
++++ b/calc/tests/test_monthlyinflation_export.py
+@@ -0,0 +1,96 @@
++"""Тесты экспорта Excel для справочника «Инфляция (помесячно)»."""
++from decimal import Decimal
++from io import BytesIO
++
++from django.contrib.auth.models import Permission, User
++from django.test import TestCase
++from django.urls import reverse
++from openpyxl import load_workbook
++
++from calc.models import MonthlyInflation
++from calc.services_inflation_export import CONTENT_TYPE
++from calc.services_inflation_import import import_from_bytes
++
++EXPORT_URL_NAME = "admin:calc_monthlyinflation_export"
++
++
++def read_rows(payload: bytes) -> list[tuple]:
++    wb = load_workbook(BytesIO(payload), data_only=True, read_only=True)
++    try:
++        return [tuple(row) for row in wb.active.iter_rows(values_only=True)]
++    finally:
++        wb.close()
++
++
++class MonthlyInflationExportTests(TestCase):
++    def setUp(self):
++        self.user = User.objects.create_superuser("boss", "boss@example.com", "pw")
++        self.client.force_login(self.user)
++        # Миграция-сид 0009 заполняет ~128 месяцев: для арифметики тестов чистим таблицу.
++        MonthlyInflation.objects.all().delete()
++
++    def test_changelist_has_export_button(self):
++        response = self.client.get(reverse("admin:calc_monthlyinflation_changelist"))
++        self.assertContains(response, "Экспорт Excel")
++        self.assertContains(response, reverse(EXPORT_URL_NAME))
++
++    def test_exports_xlsx_sorted_by_month(self):
++        MonthlyInflation.objects.create(month=3, rate=Decimal("0.0762"))
++        MonthlyInflation.objects.create(month=1, rate=Decimal("0.0732"))
++
++        response = self.client.get(reverse(EXPORT_URL_NAME))
++
++        self.assertEqual(response.status_code, 200)
++        self.assertEqual(response["Content-Type"], CONTENT_TYPE)
++        disposition = response["Content-Disposition"]
++        self.assertIn("attachment;", disposition)
++        self.assertIn("monthly_inflation_", disposition)
++        self.assertTrue(disposition.rstrip('"').endswith(".xlsx"))
++
++        rows = read_rows(response.content)
++        self.assertEqual(rows[0], ("Месяц", "Инфляция"))
++        self.assertEqual([r[0] for r in rows[1:]], [1, 3])
++        self.assertEqual(Decimal(str(rows[1][1])), Decimal("0.0732"))
++        self.assertEqual(Decimal(str(rows[2][1])), Decimal("0.0762"))
++
++    def test_empty_table_exports_header_only(self):
++        response = self.client.get(reverse(EXPORT_URL_NAME))
++        self.assertEqual(response.status_code, 200)
++        self.assertEqual(read_rows(response.content), [("Месяц", "Инфляция")])
++
++    def test_roundtrip_export_then_import(self):
++        MonthlyInflation.objects.create(month=1, rate=Decimal("0.0732"))
++        MonthlyInflation.objects.create(month=2, rate=Decimal("0.0747"))
++
++        payload = self.client.get(reverse(EXPORT_URL_NAME)).content
++        MonthlyInflation.objects.all().delete()
++
++        created, updated = import_from_bytes(payload)
++
++        self.assertEqual((created, updated), (2, 0))
++        self.assertEqual(MonthlyInflation.objects.get(month=1).rate, Decimal("0.0732"))
++        self.assertEqual(MonthlyInflation.objects.get(month=2).rate, Decimal("0.0747"))
++
++    def test_view_permission_is_enough(self):
++        user = User.objects.create_user("viewer", "v@example.com", "pw", is_staff=True)
++        user.user_permissions.add(Permission.objects.get(codename="view_monthlyinflation"))
++        self.client.force_login(user)
++
++        response = self.client.get(reverse(EXPORT_URL_NAME))
++        self.assertEqual(response.status_code, 200)
++        self.assertEqual(response["Content-Type"], CONTENT_TYPE)
++
++    def test_staff_without_permission_is_redirected(self):
++        user = User.objects.create_user("nobody", "n@example.com", "pw", is_staff=True)
++        self.client.force_login(user)
++
++        response = self.client.get(reverse(EXPORT_URL_NAME))
++        self.assertEqual(response.status_code, 302)
++        self.assertEqual(response["Location"], reverse("admin:calc_monthlyinflation_changelist"))
++        self.assertNotIn("attachment", response.get("Content-Disposition", ""))
++
++    def test_anonymous_redirected_to_login(self):
++        self.client.logout()
++        response = self.client.get(reverse(EXPORT_URL_NAME))
++        self.assertEqual(response.status_code, 302)
++        self.assertIn("/admin/login/", response["Location"])

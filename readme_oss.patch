@@ -1,0 +1,392 @@
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..7f85114
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2026 AskMeWhy11
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/README.md b/README.md
+index fd45084..371d2a9 100644
+--- a/README.md
++++ b/README.md
+@@ -1,18 +1,78 @@
+-<<<<<<< HEAD
+ # Экспресс-стройэкспертиза
+ 
+-Мини-сервис: пользователь вводит параметры объекта → получает расчёт сроков, стоимости и социалки.
+-Все справочники (себестоимость, сроки, инфляция, нормативы, паркинг) редактируются через Django Admin.
++Веб-сервис предварительной оценки стоимости и сроков строительства. Пользователь вводит параметры
++объекта — получает расчёт сроков, себестоимости, инфляционного удорожания и социальной нагрузки.
++Все справочники и тарифы редактируются через Django Admin, большие таблицы загружаются и выгружаются
++файлами Excel.
+ 
+-## Запуск
++Проект распространяется под лицензией [MIT](LICENSE).
++
++## Содержание
++
++- [Возможности](#возможности)
++- [Стек](#стек)
++- [Быстрый старт](#быстрый-старт)
++- [Запуск в Docker](#запуск-в-docker)
++- [Переменные окружения](#переменные-окружения)
++- [Структура проекта](#структура-проекта)
++- [Админка](#админка)
++- [Импорт и экспорт Excel](#импорт-и-экспорт-excel)
++- [Формулы расчёта](#формулы-расчёта)
++- [Тесты](#тесты)
++- [Развёртывание](#развёртывание)
++- [Известные ограничения](#известные-ограничения)
++- [Участие в разработке](#участие-в-разработке)
++- [Безопасность](#безопасность)
++- [Лицензия](#лицензия)
++
++## Возможности
++
++- **Калькулятор.** Ввод параметров объекта (локация, назначение, класс строительства, этажность,
++  площадь, парковка, отделка, дата начала) и расчёт сроков и стоимости.
++- **Инфляционное удорожание.** Постатейный расчёт по помесячной таблице инфляции: бюджет делится на
++  три периода 30 % / 40 % / 30 %, каждый месяц применяется своя ставка.
++- **Социальная нагрузка.** Количество мест ДОО и СОШ по нормативам и их стоимость.
++- **Наземный паркинг.** Стоимость машиномест по тарифу города.
++- **Статьи расходов.** Настраиваемый процентный разрез стоимости строительства (статьи и подстатьи).
++- **Отделка.** White Box, черновая, чистовая и дизайнерская — с тарифами по городам и назначениям.
++- **Админка на Django Admin.** Полностью редактируемые справочники, таблица себестоимости в виде
++  pivot-сетки, inline-редактирование списков.
++- **Импорт/экспорт Excel.** Помесячная инфляция — загрузка из `.xlsx` с валидацией и откатом,
++  выгрузка одним кликом; себестоимость — импорт через pivot-страницу.
++
++## Стек
++
++| Слой | Технология | Версия |
++|---|---|---|
++| Язык | Python | 3.13 |
++| Фреймворк | Django | `>=5.2,<6.0` |
++| Excel | openpyxl | `3.1.5` |
++| WSGI-сервер | Gunicorn | `23.0.0` |
++| Статика | WhiteNoise | `6.8.2` |
++| БД (по умолчанию) | SQLite | встроенный |
++| БД (опционально) | PostgreSQL | через `DATABASE_URL` |
++| Конфигурация | python-decouple | `3.8` |
++| Парсинг `DATABASE_URL` | dj-database-url | `2.3.0` |
++| Frontend | Django templates + ванильный JS/CSS | — |
++| Контейнеризация | Docker, Docker Compose | образ `python:3.13-slim` |
++| Веб-сервер | nginx | reverse proxy + TLS Let's Encrypt |
++
++Зависимости зафиксированы в [`requirements.txt`](requirements.txt).
++
++## Быстрый старт
++
++Требуется Python 3.13 (или 3.12+).
+ 
+ ```bash
++git clone <URL-репозитория>
++cd construction-platform-refresh
++
+ python -m venv .venv
+-source .venv\Scripts\activate
++source .venv/bin/activate        # Windows: .venv\Scripts\activate
+ pip install -r requirements.txt
+ 
++mkdir -p data                    # каталог под SQLite; в git не хранится
+ python manage.py migrate
+-python manage.py loaddata calc/fixtures/demo.json
+ python manage.py createsuperuser
+ python manage.py runserver
+ ```
+@@ -20,60 +80,236 @@ python manage.py runserver
+ - Калькулятор: http://127.0.0.1:8000/
+ - Админка: http://127.0.0.1:8000/admin/
+ 
+-## Что редактируется в админке
++Демо-справочники (23 класса строительства, 29 городов, тарифы себестоимости, 128 месяцев инфляции,
++нормативы и статьи расходов) загружаются миграциями `0004_seed_demo`, `0005_social_norms`,
++`0007_seed_costitem` и `0009_seed_monthly_inflation` автоматически — отдельный `loaddata` не нужен.
++
++> `python manage.py loaddata calc/fixtures/demo.json` на свежей базе **завершится ошибкой**
++> (`UNIQUE constraint failed: calc_buildingclass.name`): справочник `calc/fixtures/demo.json`
++> дублирует данные сид-миграций. Файл оставлен как источник выгрузки, пригодный только для пустой
++> базы после `migrate` без сидов (см. «Известные ограничения»).
++
++База по умолчанию — SQLite в `data/db.sqlite3`. Каталог `data/` в репозитории отсутствует (он в `.gitignore`), поэтому его нужно создать перед первым `migrate` — иначе Django упадёт с `unable to open database file`.
++
++## Запуск в Docker
++
++```bash
++cp .env.example .env      # заполнить SECRET_KEY, DEBUG=False, ALLOWED_HOSTS
++docker compose up -d --build
++```
++
++Контейнер `calcsite-web` слушает `127.0.0.1:8080`, наружу публикуется только через системный nginx.
++При старте `entrypoint.sh` последовательно выполняет `migrate`, `collectstatic` и запускает Gunicorn
++(3 воркера, таймаут 60 с). Каталог `./data` смонтирован как volume — база SQLite сохраняется между
++пересборками.
++
++> Код копируется в образ на этапе сборки (`COPY . .`), поэтому после изменения исходников нужен
++> `docker compose up -d --build web`, а не `docker restart`.
++
++## Переменные окружения
++
++Читаются через `python-decouple` из `.env` или переменных окружения. Шаблон — [`.env.example`](.env.example).
++
++| Переменная | По умолчанию | Назначение |
++|---|---|---|
++| `SECRET_KEY` | `dev-secret-change-me` | Ключ Django. В продакшене обязателен свой. |
++| `DEBUG` | `True` | Режим отладки. В продакшене — `False`. |
++| `ALLOWED_HOSTS` | `*` | Список хостов через запятую. |
++| `CSRF_TRUSTED_ORIGINS` | пусто | Список origin'ов через запятую (со схемой). |
++| `DATABASE_URL` | `sqlite:///<BASE_DIR>/data/db.sqlite3` | Строка подключения к БД. |
++
++При `DEBUG=False` автоматически включаются `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`,
++`SECURE_CONTENT_TYPE_NOSNIFF`, `X_FRAME_OPTIONS=DENY` и учитывается заголовок `X-Forwarded-Proto`.
++
++## Структура проекта
++
++```
++.
++├── manage.py
++├── requirements.txt
++├── Dockerfile               # python:3.13-slim
++├── docker-compose.yml       # сервис web
++├── entrypoint.sh            # migrate → collectstatic → gunicorn
++├── deploy.sh                # git pull → docker compose up -d --build
++├── .env.example
++├── nginx/
++│   └── construction-platform.conf   # HTTP→HTTPS, TLS, proxy на :8080
++├── expertise/               # конфигурация проекта
++│   ├── settings.py
++│   ├── urls.py
++│   └── wsgi.py
++└── calc/                    # единственное приложение
++    ├── models.py            # справочники и тарифы
++    ├── forms.py             # форма калькулятора
++    ├── views.py             # страница калькулятора, API-хелперы
++    ├── views_admin.py       # pivot-страница себестоимости, её импорт
++    ├── admin_views_inflation.py    # custom views админки инфляции
++    ├── services.py          # ядро расчёта
++    ├── services_import.py          # импорт себестоимости из Excel
++    ├── services_inflation_import.py # импорт помесячной инфляции из Excel
++    ├── services_inflation_export.py # выгрузка помесячной инфляции в Excel
++    ├── admin.py             # регистрация моделей и кастомных URL
++    ├── migrations/          # 0001…0011
++    ├── fixtures/demo.json   # демо-данные
++    ├── static/calc/         # app.css, app.js, cost_pivot.*, шрифты, favicon
++    ├── templates/calc/      # base.html, form.html, history.html, admin_*
++    └── tests/               # тесты импорта, экспорта и точности
++```
++
++## Админка
+ 
+ | Раздел | Назначение |
+ |---|---|
+-| Города | Локации (выпадающий список в форме) |
+-| Функциональные назначения | + доля площади квартир |
++| Города | Локации; переопределения нормативов и тарифов отделки |
++| Функциональные назначения | Назначение + доля площади квартир + доступные классы |
+ | Классы строительства | Эконом / Комфорт / Бизнес / Премиум |
+-| **Себестоимость (таблица)** | ₽/м² по (город × назначение × класс) |
+-| Сроки строительства | Месяцы по (назначение × класс × этажность) |
+-| Инфляция | Активная ставка (напр. 0.0732) |
+-| Нормативы социалки | м²/место и стоимость места ДОО/СОШ |
++| **Себестоимость (таблица)** | pivot-сетка «город × класс», импорт из Excel |
++| Сроки строительства | Месяцы по площади |
++| Инфляция | Активная ставка (архивная модель) |
++| **Инфляция (помесячно)** | Таблица месяцев для инфляционного расчёта, импорт/экспорт Excel |
++| Нормативы социальки | м²/место и стоимость места ДОО/СОШ |
+ | Наземный паркинг (тарифы) | ₽ за машиноместо по городу |
+-| Настройки расчёта | Коэф. очистки от инфляции (по умолч. 0.9) |
++| Настройки расчёта | Коэф. очистки от инфляции, нормативы и отделка по умолчанию |
++| Статьи расходов на строительство | Процентный разрез стоимости, статьи и подстатьи |
++
++## Импорт и экспорт Excel
++
++### Инфляция (помесячно)
+ 
+-## Формулы
++В шапке списка — кнопки **⬆ Импорт Excel** и **⬇ Экспорт Excel**.
++
++Формат файла (первый лист):
++
++| A | B |
++|---|---|
++| Месяц | Инфляция |
++| 1 | 0,0732001 |
++| 2 | 0,0747 |
++
++- **Колонка A** — месяц, целое число ≥ 1.
++- **Колонка B** — ставка, число; разделитель дробной части — `,` или `.`, пробелы игнорируются.
++- **Шапка** («Месяц» / «Инфляция») опциональна: распознаётся и пропускается.
++- Точность ставки — **до 7 знаков** после запятой, целая часть — до 2 знаков (`99.9999999`).
++
++Правила импорта:
++
++- Импорт **upsert по месяцу**: существующий месяц обновляется, новый создаётся.
++- Дубликат месяца внутри файла — ошибка с указанием строки.
++- Импорт **атомарен**: ошибка любой строки откатывает всю операцию, в сообщении — номер строки и причина.
++- Проверяется расширение `.xlsx`, факт открытия файла библиотекой и размер ≤ 5 МБ.
++- Требуется право `calc.change_monthlyinflation`; по успеху выводится «Создано N, обновлено M».
++
++Экспорт отдаёт отсортированный по месяцу файл `monthly_inflation_ГГГГММДД.xlsx` с числовым форматом
++`0.0000000` (значение можно суммировать и строить по нему графики). Экспортированный файл пригоден
++для обратной загрузки импортом. Требуется право `calc.view_monthlyinflation`.
++
++### Себестоимость
++
++Раздел «Себестоимость (таблица)» → «Открыть таблицу-pivot» → «Импорт Excel». Файл: колонка A — город,
++далее колонки по классам строительства. Импорт предваряется превью и позволяет выбрать, создавать ли
++отсутствующие города, перезаписывать ли существующие тарифы и удалять ли нулевые значения.
++
++## Формулы расчёта
+ 
+ ```
+-base       = total_area * price_per_sqm * clean_coef
+-inflation  = base * inflation_rate
+-cost_total = base + inflation
++# Площади
++apartments_area = total_area × apartments_area_ratio
++rest_area       = total_area − apartments_area
++
++# Множитель этажности
++floor_multiplier = 1.25 при floors ≥ 30, иначе 1
++
++# Базовая стоимость
++base_cost = rest_area × price_per_sqm × floor_multiplier
++          + apartments_area × (price_per_sqm + finish_rate)
++
++# Инфляция: 3 периода 30 % / 40 % / 30 %, длительность — из справочника сроков
++inflation_amount = Σ (spend_месяца × rate_месяца)
++construction_cost = base_cost + inflation_amount
++
++# Социальная нагрузка
++residents  = ceil(apartments_area / sqm_per_resident)
++doo_seats  = ceil(residents × 0.001 × doo_per_1000)
++sosh_seats = ceil(residents × 0.001 × sosh_per_1000)
++doo_cost   = doo_seats  × price_per_seat
++sosh_cost  = sosh_seats × price_per_seat
+ 
+-DOO_seats  = ceil(total_area / 65)
+-DOO_cost   = DOO_seats * cost_per_doo_seat
+-SOSH_seats = ceil(total_area / 50)
+-SOSH_cost  = SOSH_seats * cost_per_school_seat
++# Паркинг
++ground_parking_cost = ground_parking_spaces × cost_per_space
+ 
+-parking_cost = ground_parking_spaces * cost_per_space (по городу)
++# Статьи расходов
++amount = ceil(construction_cost × percent / 100)
+ ```
+ 
+-## Загрузка реальной таблицы себестоимости
++Срок строительства интерполируется по справочнику «Сроки строительства» (ключ — общая площадь).
++Расчёт ведётся в `Decimal`; денежные величины округляются до копеек, статьи расходов — вверх
++(`ROUND_CEILING`).
+ 
+-Варианты:
+-1. Через админку → раздел «Себестоимость» → «Добавить».
+-2. Заменить `calc/fixtures/demo.json` своими данными и `loaddata`.
+-3. (по запросу) добавить импорт из CSV/XLSX.
++## Тесты
++
++```bash
++python manage.py collectstatic --noinput     # обязательно перед тестами, см. ниже
++python manage.py test calc.tests -v 2
+ ```
+ 
+-**Запуск:**
++Покрытие: импорт помесячной инфляции (успех, шапка, битый файл, откат, дубли, права), экспорт
++(сортировка, пустая таблица, round-trip, права) и точность ставки (7 знаков, границы формата,
++совместимость со старыми 4-значными данными).
++
++> `collectstatic` перед тестами нужен из-за `CompressedManifestStaticFilesStorage`: без манифеста
++> тесты, рендерящие страницы админки, падают на `Missing staticfiles manifest entry`. Это относится
++> к любым admin-тестам в проекте.
++
++## Развёртывание
++
++1. Склонировать репозиторий и заполнить `.env` (обязательно `SECRET_KEY`, `DEBUG=False`,
++   `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`).
++2. Положить конфиг [`nginx/construction-platform.conf`](nginx/construction-platform.conf) в
++   `/etc/nginx/sites-enabled/` и выпустить сертификат Let's Encrypt для своего домена.
++3. Поднять приложение:
++
+ ```bash
+-pip install -r requirements.txt && python manage.py migrate && python manage.py loaddata calc/fixtures/demo.json && python manage.py createsuperuser && python manage.py runserver
++docker compose up -d --build
++# или обновление существующего деплоя:
++sh deploy.sh
+ ```
+ 
+----
+-
+-**Что готово:**
+-- Форма ввода со всеми 7 полями ТЗ.
+-- Расчёт по формулам ТЗ (срок, стоимость, инфляция, ДОО, СОШ, наземный паркинг, площадь квартир).
+-- Админка с редактируемыми таблицами: **себестоимость**, сроки, инфляция, нормативы соц., тарифы паркинга, настройки, справочники.
+-- Демо-фикстура для мгновенного старта.
+-
+-**Что осталось / зависит от тебя:**
+-1. Дай реальную **таблицу себестоимости** (xlsx/csv) — заменю фикстуру или сделаю импорт-команду.
+-2. Если **подземный паркинг** должен иметь стоимость (₽/м² или ₽/мм) — скажи формулу, добавлю модель `UndergroundParkingRate` и расчёт.
+-3. Если сроки нужно считать иначе (по площади, а не этажам) — поменяю модель `ConstructionDuration`.
+-=======
+-# construction-platform-refresh
+->>>>>>> 96b5717be76c8d0266414349650a45d1cf2b24de
++nginx терминирует TLS и проксирует на `127.0.0.1:8080`; лимит размера тела запроса — 20 МБ.
++Миграции и `collectstatic` выполняются автоматически при старте контейнера.
++
++## Известные ограничения
++
++- `python manage.py makemigrations --check` показывает расхождение по полю `calc.CostItem.id`:
++  миграция `0006_costitem` объявляет `id` как `AutoField`, тогда как в настройках
++  `DEFAULT_AUTO_FIELD = BigAutoField`. Расхождение предсуществующее (воспроизводится на чистом
++  `main`) и к текущей функциональности не относится; осознанно не «лечится» миграцией.
++- Фикстура `calc/fixtures/demo.json` несовместима с сид-миграциями: справочники классов
++  строительства и городов уже созданы миграцией `0004_seed_demo`, поэтому `loaddata` падает на
++  `UNIQUE constraint failed: calc_buildingclass.name`. Актуальные демо-данные поставляются
++  миграциями; фикстуру не используем.
++- Имя выгружаемого файла — только ASCII намеренно, чтобы `Content-Disposition` не требовал RFC 5987.
++- Подземный паркинг учитывается как флаг и отдельной стоимостью не оценён.
++- Хранение истории расчётов не реализовано: страница «История» — заглушка.
++- Аутентификация калькулятора не предусмотрена — расчёт открыт всем, ограничения только в админке.
++
++## Участие в разработке
++
++1. Форк и ветка от `main`: `git checkout -b feature/краткое-описание`.
++2. Стиль кода — по существующим файлам: двойные кавычки, `snake_case`, комментарии по-русски,
++   логика расчётов — в `services*.py`, представления — тонкие.
++3. Новые зависимости — только по согласованию, с фиксацией версии в `requirements.txt`.
++4. Миграции — `python manage.py makemigrations`; проверка `python manage.py check` без новых ошибок.
++5. Тесты — `python manage.py test calc.tests` зелёные; на новую функциональность — новые тесты.
++6. Pull request с описанием: что изменено, зачем, как проверено.
++
++## Безопасность
++
++Секреты не хранятся в репозитории — только в `.env` (в `.gitignore` и `.dockerignore`). Не публикуйте
++`SECRET_KEY`, содержимое `.env`, доступы к БД и дампы данных. Об уязвимостях сообщайте приватно
++мейнтейнеру репозитория, не открывая публичный issue.
++
++## Лицензия
++
++Проект распространяется под лицензией [MIT](LICENSE). Вы можете свободно использовать, изменять и
++распространять код, в том числе в коммерческих целях, при условии сохранения текста лицензии и
++уведомления об авторских правах.

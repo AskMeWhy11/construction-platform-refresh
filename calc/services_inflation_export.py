@@ -10,8 +10,8 @@ from .models import MonthlyInflation
 SHEET_TITLE = "Инфляция"
 HEADER_MONTH = "Месяц"
 HEADER_RATE = "Инфляция"
-# Тот же формат, что и у поля модели: 4 знака после запятой.
-RATE_NUMBER_FORMAT = "0.0000"
+# Тот же формат, что и у поля модели: столько знаков, сколько decimal_places.
+RATE_NUMBER_FORMAT = "0." + "0" * MonthlyInflation._meta.get_field("rate").decimal_places
 
 CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 

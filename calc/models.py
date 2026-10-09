@@ -280,8 +280,8 @@ class MonthlyInflation(models.Model):
     """Помесячная таблица инфляции для расчёта инфляционного удорожания."""
     month = models.PositiveSmallIntegerField("Месяц", unique=True)
     rate = models.DecimalField(
-        "Инфляция", max_digits=6, decimal_places=4,
-        help_text="Доля, например 0.0806 = 8.06%",
+        "Инфляция", max_digits=9, decimal_places=7,
+        help_text="Доля, например 0.0806000 = 8.06% (до 7 знаков после запятой)",
     )
 
     class Meta:
