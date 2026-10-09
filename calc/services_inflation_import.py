@@ -1,5 +1,5 @@
 """Импорт MonthlyInflation из Excel-файла (колонка A — месяц, колонка B — инфляция)."""
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from io import BytesIO
 from itertools import chain
 
@@ -16,6 +16,9 @@ HEADER_RATE = "инфляция"
 MAX_RATE_DIGITS = MonthlyInflation._meta.get_field("rate").max_digits
 MAX_RATE_DECIMALS = MonthlyInflation._meta.get_field("rate").decimal_places
 MAX_RATE_INT_DIGITS = MAX_RATE_DIGITS - MAX_RATE_DECIMALS
+
+# Квант ставки: 0.0000001. Всё, что приходит из файла, округляется до него.
+RATE_QUANTUM = Decimal(1).scaleb(-MAX_RATE_DECIMALS)
 
 
 class MonthlyInflationImportError(Exception):
@@ -82,10 +85,28 @@ def _parse_rate(raw, row_number: int) -> Decimal:
     if value <= 0:
         raise MonthlyInflationImportError(row_number, f"инфляция должна быть > 0, получено {raw!r}")
 
+    # Excel хранит числа как double, поэтому 0.17233 приходит как 0.17232999999999998.
+    # Округляем до значности поля, чтобы такие артефакты не считались ошибкой формата.
+    try:
+        value = value.quantize(RATE_QUANTUM, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise MonthlyInflationImportError(
+            row_number,
+            f"инфляция не помещается в формат поля (до {MAX_RATE_INT_DIGITS} цифр "
+            f"перед запятой, до {MAX_RATE_DECIMALS} после): {raw!r}",
+        )
+
+    if value <= 0:
+        raise MonthlyInflationImportError(
+            row_number,
+            f"инфляция должна быть > 0: после округления до {MAX_RATE_DECIMALS} знаков "
+            f"получился 0 (было {raw!r})",
+        )
+
     _, digits, exponent = value.as_tuple()
     decimals = max(0, -exponent)
     int_digits = max(len(digits) - decimals, 0)
-    if decimals > MAX_RATE_DECIMALS or int_digits > MAX_RATE_INT_DIGITS:
+    if int_digits > MAX_RATE_INT_DIGITS:
         raise MonthlyInflationImportError(
             row_number,
             f"инфляция не помещается в формат поля (до {MAX_RATE_INT_DIGITS} цифр "
