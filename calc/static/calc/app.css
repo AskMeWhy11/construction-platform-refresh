@@ -1,43 +1,10 @@
 /* ==========================================================================
-   Шрифты Сбера
+   Шрифт: Inter (SIL OFL 1.1) — см. fonts/LICENSE.txt
    ========================================================================== */
 @font-face {
-    font-family: "SB Sans Text";
-    src: url("fonts/SBSansText-Light.woff2") format("woff2"),
-         url("fonts/SBSansText-Light.woff") format("woff");
-    font-weight: 300;
-    font-style: normal;
-    font-display: swap;
-}
-@font-face {
-    font-family: "SB Sans Text";
-    src: url("fonts/SBSansText-Regular.woff2") format("woff2"),
-         url("fonts/SBSansText-Regular.woff") format("woff");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
-@font-face {
-    font-family: "SB Sans Text";
-    src: url("fonts/SBSansText-Medium.woff2") format("woff2"),
-         url("fonts/SBSansText-Medium.woff") format("woff");
-    font-weight: 500;
-    font-style: normal;
-    font-display: swap;
-}
-@font-face {
-    font-family: "SB Sans Text";
-    src: url("fonts/SBSansText-Semibold.woff2") format("woff2"),
-         url("fonts/SBSansText-Semibold.woff") format("woff");
-    font-weight: 600;
-    font-style: normal;
-    font-display: swap;
-}
-@font-face {
-    font-family: "SB Sans Display";
-    src: url("fonts/SBSansDisplay-Regular.woff2") format("woff2"),
-         url("fonts/SBSansDisplay-Regular.woff") format("woff");
-    font-weight: 400;
+    font-family: "Inter";
+    src: url("fonts/InterVariable.woff2") format("woff2");
+    font-weight: 100 900;
     font-style: normal;
     font-display: swap;
 }
@@ -81,8 +48,8 @@
     --radius-sm:         10px;
     --radius-xs:         8px;
 
-    --font-text:    "SB Sans Text", -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
-    --font-display: "SB Sans Display", "SB Sans Text", -apple-system, "Segoe UI", sans-serif;
+    --font-text:    "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-display: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Тёмная тема */

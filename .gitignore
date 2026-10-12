@@ -13,3 +13,9 @@ staticfiles/
 .vscode/
 tree.txt
 dumb.md
+
+# Inter: в репо только вариативный woff2 + текст лицензии
+calc/static/calc/fonts/*
+!calc/static/calc/fonts/InterVariable.woff2
+!calc/static/calc/fonts/LICENSE.txt
+Inter*.zip

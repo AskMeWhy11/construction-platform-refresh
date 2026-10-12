@@ -13,11 +13,9 @@
     <link rel="apple-touch-icon" href="{% static 'calc/apple-touch-icon.png' %}">
     <link rel="manifest" href="{% static 'calc/site.webmanifest' %}">
 
-    {# Preload ключевых шрифтов (быстрый первый рендер) #}
+    {# Preload основного шрифта (быстрый первый рендер) #}
     <link rel="preload" as="font" type="font/woff2" crossorigin
-          href="{% static 'calc/fonts/SBSansText-Regular.woff2' %}">
-    <link rel="preload" as="font" type="font/woff2" crossorigin
-          href="{% static 'calc/fonts/SBSansDisplay-Regular.woff2' %}">
+          href="{% static 'calc/fonts/InterVariable.woff2' %}">
 
     {# Tom Select #}
     <link rel="stylesheet" href="{% static 'calc/vendor/tom-select.css' %}">

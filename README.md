@@ -95,7 +95,7 @@ Released under the [MIT](LICENSE) license.
 | `DATABASE_URL` parsing | dj-database-url | `2.3.0` |
 | Frontend | Django templates + vanilla JS/CSS | — |
 | Dropdowns | Tom Select (vendored) | `2.4.3` |
-| Fonts | SB Sans Text / SB Sans Display (vendored, ParaType) | — |
+| Fonts | Inter (vendored, SIL OFL 1.1) | — |
 | Containerisation | Docker, Docker Compose | image `python:3.13-slim` |
 | Web server | nginx | reverse proxy + TLS Let's Encrypt |
 
@@ -187,7 +187,7 @@ With `DEBUG=False`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `SECURE_CONTE
     ├── admin.py             # model registration and custom URLs
     ├── migrations/          # 0001…0011
     ├── fixtures/demo.json   # demo data
-    ├── static/calc/         # app.css, app.js, cost_pivot.*, fonts, favicon
+    ├── static/calc/         # app.css, app.js, cost_pivot.*, fonts (Inter), favicon
     ├── templates/calc/      # base.html, form.html, history.html, admin_*
     ├── templatetags/calc_format.py  # spaces filter: digit grouping with narrow space
     └── tests/               # 5 modules, 44 tests: inflation (import/export/precision) and cost
@@ -441,10 +441,10 @@ The repository contains vendored components, each under its own license — it i
 | Component | Where | License |
 |---|---|---|
 | Tom Select 2.4.3 | `calc/static/calc/vendor/` | Apache License 2.0 (header preserved in files) |
-| Fonts SB Sans Text / SB Sans Display | `calc/static/calc/fonts/` | © ParaType, 2019, "All rights reserved" — see warning below |
-| Favicon and PWA icons | `calc/static/calc/*.png`, `favicon.*` | Generated with nano banana (Google Gemini); released under the MIT license as part of this project |
+| Inter (variable) | `calc/static/calc/fonts/` | SIL OFL 1.1 — see `calc/static/calc/fonts/LICENSE.txt` |
+| Favicon and PWA icons | `calc/static/calc/*.png`, `favicon.*` | MIT (part of this project) |
 
-> **The fonts require attention when publishing.** The file headers say `Copyright © ParaType, 2019. All rights reserved.` — this is not a free license. To distribute the project under MIT, you need either explicit permission from the copyright holder for the fonts, or replace them with open-licensed fonts (e.g., SIL OFL). The fonts are the only component that formally conflicts with MIT for the entire repository.
+> **MIT applies to the source code only.** The bundled Inter font is licensed separately under the [SIL OFL 1.1](https://openfontlicense.org/). Its license text ships next to the font in `calc/static/calc/fonts/LICENSE.txt` and must be kept with any redistribution. OFL does not permit re-licensing the font itself under MIT, so `LICENSE` covers the project code, not the font files.
 
 ### License
 
@@ -545,7 +545,7 @@ The project is released under the [MIT](LICENSE) license. You are free to use, m
 | Парсинг `DATABASE_URL` | dj-database-url | `2.3.0` |
 | Frontend | Django templates + ванильный JS/CSS | — |
 | Выпадающие списки | Tom Select (вендорен) | `2.4.3` |
-| Шрифты | SB Sans Text / SB Sans Display (вендорены, ParaType) | — |
+| Шрифты | Inter (вендорен, SIL OFL 1.1) | — |
 | Контейнеризация | Docker, Docker Compose | образ `python:3.13-slim` |
 | Веб-сервер | nginx | reverse proxy + TLS Let's Encrypt |
 
@@ -891,10 +891,10 @@ nginx терминирует TLS и проксирует на `127.0.0.1:8080`; 
 | Компонент | Где | Лицензия |
 |---|---|---|
 | Tom Select 2.4.3 | `calc/static/calc/vendor/` | Apache License 2.0 (заголовок сохранён в файлах) |
-| Шрифты SB Sans Text / SB Sans Display | `calc/static/calc/fonts/` | © ParaType, 2019, «All rights reserved» — см. предупреждение ниже |
-| Favicon и иконки PWA | `calc/static/calc/*.png`, `favicon.*` | Сгенерированы в nano banana (Google Gemini); распространяются под лицензией MIT в составе проекта |
+| Inter (variable) | `calc/static/calc/fonts/` | SIL OFL 1.1 — см. `calc/static/calc/fonts/LICENSE.txt` |
+| Favicon и иконки PWA | `calc/static/calc/*.png`, `favicon.*` | MIT (в составе проекта) |
 
-> **Шрифты требуют внимания при публикации.** Заголовки файлов сообщают `Copyright © ParaType, 2019. All rights reserved.` — это не свободная лицензия. Для распространения проекта под MIT нужно либо получить на шрифты явное разрешение правообладателя, либо заменить их на шрифты с открытой лицензией (например, SIL OFL). Шрифты — единственный компонент, который формально конфликтует с MIT для всего репозитория.
+> **MIT покрывает только исходный код.** Вендоренный шрифт Inter лицензируется отдельно по [SIL OFL 1.1](https://openfontlicense.org/). Текст лицензии лежит рядом с шрифтом в `calc/static/calc/fonts/LICENSE.txt` и должен сохраняться при распространении файлов шрифта. OFL не позволяет перелицензировать сам шрифт под MIT, так что `LICENSE` относится к коду проекта, а не к файлам шрифта.
 
 ### Лицензия
 
